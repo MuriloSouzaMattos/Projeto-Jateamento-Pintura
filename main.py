@@ -46,9 +46,9 @@ class MainWindow(QWidget):
         # Botões
         self.btn_start = QPushButton("Conectar / Iniciar")
         self.btn_stop = QPushButton("Parar / Desconectar")
-        self.btn_clear = QPushButton("Limpar medições")
         self.btn_stop.setEnabled(False)
         self.btn_export = QPushButton("Exportar para Excel")
+        self.btn_clear_one = QPushButton("Limpar medição selecionada")
 
         self.btn_start.setStyleSheet("""
         QPushButton {
@@ -85,6 +85,7 @@ class MainWindow(QWidget):
         # ====== MEDIÇÕES (1 coluna, 46 linhas) ======
         self.measure_edits: list[QLineEdit] = []
         self.next_index = 0  # 0..45
+        self.override_index: int | None = None
 
         measures_box = QGroupBox("Medições (1 a 46)")
         measures_grid = QGridLayout()
@@ -92,8 +93,9 @@ class MainWindow(QWidget):
         for i in range(46):
             lbl = QLabel(f"{i+1:02d}:")
             edit = QLineEdit()
-            edit.setReadOnly(True)
+            edit.setReadOnly(False)
             edit.setAlignment(Qt.AlignCenter)
+            edit.selectionChanged.connect(lambda i=i: self.set_override_index(i))
 
             self.measure_edits.append(edit)
 
@@ -164,8 +166,8 @@ class MainWindow(QWidget):
         buttons = QHBoxLayout()
         buttons.addWidget(self.btn_start)
         buttons.addWidget(self.btn_stop)
-        buttons.addWidget(self.btn_clear)
         buttons.addWidget(self.btn_export)
+        buttons.addWidget(self.btn_clear_one)
 
         # ====== Layout principal ======
         layout = QVBoxLayout()
@@ -183,8 +185,8 @@ class MainWindow(QWidget):
         # Sinais
         self.btn_start.clicked.connect(self.start)
         self.btn_stop.clicked.connect(self.stop)
-        self.btn_clear.clicked.connect(self.clear_measurements)
         self.btn_export.clicked.connect(self.export_to_excel)
+        self.btn_clear_one.clicked.connect(self.clear_selected_measurement)
 
     def image_path_for_measure(self, measure_number: int) -> str:
         if 1 <= measure_number <= 6:
@@ -218,13 +220,6 @@ class MainWindow(QWidget):
     def append_log(self, text: str) -> None:
         self.log.append(text)
 
-    def clear_measurements(self) -> None:
-        for e in self.measure_edits:
-            e.clear()
-        self.next_index = 0
-        self.append_log("Medições limpas. Próxima medição vai para o campo 01.")
-        self.update_image_for_measure(1)
-
     def _extract_value_um(self, data: bytes) -> str | None:
         text = data.decode("utf-8", errors="ignore").strip()
         m = _RX.search(text)
@@ -233,6 +228,26 @@ class MainWindow(QWidget):
         valor = m.group(1).replace(",", ".")
         return f"{valor} um"
 
+    def set_override_index(self, index: int) -> None:
+        self.override_index = index
+        # opcional: destacar o campo escolhido para correção
+        for j, e in enumerate(self.measure_edits):
+            e.setStyleSheet("" if j != index else "border: 2px solid #1976d2;")
+
+    def clear_selected_measurement(self) -> None:
+        if self.override_index is None:
+            QMessageBox.information(self, "Info", "Clique primeiro na medição que deseja limpar.")
+            return
+
+        idx = self.override_index
+        self.measure_edits[idx].clear()
+
+        # opcional: remover destaque e “consumir” a seleção
+        self.override_index = None
+        for e in self.measure_edits:
+            e.setStyleSheet("")
+
+        self.append_log(f"Medição {idx+1:02d} limpa.")
 
     def validate_header_fields(self) -> bool:
         projeto = self.projeto.text().strip()
@@ -263,13 +278,10 @@ class MainWindow(QWidget):
             QMessageBox.warning(
                 self,
                 "Campos inválidos",
-                "Verifique os campos:
-    "
-                "- Projeto: 3 letras maiúsculas + 4 números (ex: ABC1234)
-    "
-                "- Número de Série: 10 dígitos (ex: 0123456789)
-    "
-                "- Operador: Z + 3 dígitos + 4 alfanuméricos maiúsculos (ex: Z123AB4C)",
+                """Verifique os campos:
+        - Projeto: 3 letras maiúsculas + 4 números (ex: SEF0500)
+        - Número de Série: 10 dígitos (ex: 1015150001)
+        - Operador: Z + 3 dígitos + 4 alfanuméricos maiúsculos (ex: Z0052DFZ)""",
             )
         return ok
 
@@ -279,28 +291,38 @@ class MainWindow(QWidget):
             self.append_log(f"Payload não reconhecido: {data!r}")
             return
 
-        if self.next_index >= 46:
-            self.append_log("Já existem 46 medições preenchidas. Limpe para continuar.")
-            return
+        # Decide onde escrever: correção (override) ou sequência (next_index)
+        if self.override_index is not None:
+            idx = self.override_index
+            self.override_index = None
 
-        # preenche o campo atual
-        edit_atual = self.measure_edits[self.next_index]
+            # opcional: remove destaque visual
+            for e in self.measure_edits:
+                e.setStyleSheet("")
+        else:
+            if self.next_index >= 46:
+                self.append_log("Já existem 46 medições preenchidas. Limpe para continuar.")
+                return
+            idx = self.next_index
+            self.next_index += 1
+
+        # preenche o campo escolhido
+        edit_atual = self.measure_edits[idx]
         edit_atual.setText(value)
 
-        # faz o scroll descer até o campo preenchido
+        # scroll até o campo preenchido
         self.scroll_measures.ensureWidgetVisible(edit_atual)
 
-        self.next_index += 1
-
-        # atualiza imagem para a PRÓXIMA medição (1..46)
+        # atualiza imagem para a PRÓXIMA medição SEQUENCIAL (baseado em next_index)
         proxima_medicao = min(self.next_index + 1, 46)
         self.update_image_for_measure(proxima_medicao)
 
-        # opcional: colocar foco no próximo campo e já rolar pra ele
+        # opcional: foco no próximo campo sequencial (não no corrigido)
         if self.next_index < 46:
             prox = self.measure_edits[self.next_index]
             prox.setFocus()
             self.scroll_measures.ensureWidgetVisible(prox)
+
 
     def export_to_excel(self) -> None:
         projeto = self.projeto.text().strip()
@@ -319,6 +341,8 @@ class MainWindow(QWidget):
                 "Erro",
                 "Preencha Projeto, Número de Série e Operador antes de exportar.",
             )
+            return
+        if not self.validate_header_fields():
             return
 
         if not any(medidas):
