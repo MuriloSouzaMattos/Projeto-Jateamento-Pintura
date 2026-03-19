@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pandas as pd
 
-from PySide6.QtWidgets import QFileDialog
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -47,7 +46,7 @@ class MainWindow(QWidget):
         self.btn_start = QPushButton("Conectar / Iniciar")
         self.btn_stop = QPushButton("Parar / Desconectar")
         self.btn_stop.setEnabled(False)
-        self.btn_export = QPushButton("Exportar para Excel")
+        self.btn_export = QPushButton("Salvar")
         self.btn_clear_one = QPushButton("Limpar medição selecionada")
 
         self.btn_start.setStyleSheet("""
@@ -166,8 +165,8 @@ class MainWindow(QWidget):
         buttons = QHBoxLayout()
         buttons.addWidget(self.btn_start)
         buttons.addWidget(self.btn_stop)
-        buttons.addWidget(self.btn_export)
         buttons.addWidget(self.btn_clear_one)
+        buttons.addWidget(self.btn_export)
 
         # ====== Layout principal ======
         layout = QVBoxLayout()
@@ -185,8 +184,8 @@ class MainWindow(QWidget):
         # Sinais
         self.btn_start.clicked.connect(self.start)
         self.btn_stop.clicked.connect(self.stop)
-        self.btn_export.clicked.connect(self.export_to_excel)
         self.btn_clear_one.clicked.connect(self.clear_selected_measurement)
+        self.btn_export.clicked.connect(self.export_to_excel)
 
     def image_path_for_measure(self, measure_number: int) -> str:
         if 1 <= measure_number <= 6:
@@ -248,6 +247,23 @@ class MainWindow(QWidget):
             e.setStyleSheet("")
 
         self.append_log(f"Medição {idx+1:02d} limpa.")
+
+    def clear_measurements(self) -> None:
+        for e in self.measure_edits:
+            e.clear()
+
+        self.next_index = 0
+        self.override_index = None
+
+        # remove bordas de seleção/erro que você tenha aplicado
+        for e in self.measure_edits:
+            e.setStyleSheet("")
+        self.projeto.setStyleSheet("")
+        self.serie.setStyleSheet("")
+        self.operador.setStyleSheet("")
+
+        self.update_image_for_measure(1)
+        self.append_log("Medições limpas. Próxima medição vai para o campo 01.")
 
     def validate_header_fields(self) -> bool:
         projeto = self.projeto.text().strip()
@@ -345,9 +361,9 @@ class MainWindow(QWidget):
         if not self.validate_header_fields():
             return
 
-        if not any(medidas):
+        '''if not any(medidas):
             QMessageBox.warning(self, "Erro", "Não há medições para exportar.")
-            return
+            return'''
 
         row = {
             "Data/Hora": datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
@@ -368,26 +384,20 @@ class MainWindow(QWidget):
 
         default_name = f"medicoes_{serie}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Salvar Excel",
-            str(export_dir / default_name),
-            "Excel (*.xlsx)",
-        )
-        if not path:
-            return
-
-        if not path.lower().endswith(".xlsx"):
-            path += ".xlsx"
-
-        if not path:
-            return
-        if not path.lower().endswith(".xlsx"):
-            path += ".xlsx"
+        path = export_dir / default_name
 
         try:
-            df.to_excel(path, index=False, sheet_name="Medições")
+            df.to_excel(str(path), index=False, sheet_name="Medições")
             QMessageBox.information(self, "OK", f"Arquivo salvo em: {path}")
+            self.append_log(f"Salvo em: {path}")
+            self.clear_measurements()
+
+            # opcional: limpar também os campos de cabeçalho
+            self.projeto.clear()
+            self.serie.clear()
+            self.operador.clear()
+            self.posto.setCurrentIndex(-1)  # se você deixou com placeholder
+
         except Exception as e:
             QMessageBox.critical(self, "Erro", f"Falha ao salvar Excel: {e}")
 
