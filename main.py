@@ -1,32 +1,200 @@
 import sys
-import asyncio
 import re
-from datetime import datetime
-from pathlib import Path
+import asyncio
 
-import pandas as pd
-
+from ble import BleNotifier
+from PySide6.QtGui import QPixmap
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QPushButton, QTextEdit, QLineEdit, QLabel, QMessageBox, QGroupBox, QScrollArea, QComboBox
+    QComboBox,
+    QTextEdit,
+    QGroupBox,
+    QScrollArea,
+    QApplication,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QLabel,
+    QPushButton,
+    QMessageBox,
+    QStackedWidget,
+    QHeaderView,
+    QTableWidget,
+    QTableWidgetItem,
+    QLineEdit,
 )
-from PySide6.QtGui import QPixmap
 
 from qasync import QEventLoop, asyncSlot
 
-from ble import BleNotifier
-
+from repo import Repo
+from exporter import export_measurement_to_excel
 
 _RX = re.compile(r"([+-]?\d+(?:[.,]\d+)?)\s*(?:u[mM]|µm)\b")
+RE_OPERADOR = re.compile(r"^Z\d{3}[A-Z0-9]{4}$")
 RE_SERIE = re.compile(r"^\d{10}$")
 RE_PROJETO = re.compile(r"^[A-Z]{3}\d{4}$")
-RE_OPERADOR = re.compile(r"^Z\d{3}[A-Z0-9]{4}$")
+
+POSTOS = [
+    ("FUNDO", "Pintura - Fundo"),
+    ("ACAB", "Pintura - Acabamento"),
+    ("JAT", "Jateamento"),
+]
 
 
-class MainWindow(QWidget):
-    def __init__(self) -> None:
+class OverviewPage(QWidget):
+    def __init__(self, repo: Repo, go_newedit, go_batch, go_history) -> None:
         super().__init__()
+        self.repo = repo
+        self.go_newedit = go_newedit
+        self.go_batch = go_batch
+        self.go_history = go_history
+
+        self.table = QTableWidget(0, 7)
+        self.table.setHorizontalHeaderLabels(["", "ID", "Data/Hora", "Operador", "Projeto", "Número de Série", "Posto"])
+        self.table.setColumnWidth(0, 30)
+        self.table.setColumnHidden(1, True)
+        self.table.horizontalHeader().setStretchLastSection(True)
+
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)   # ajusta ao conteúdo
+        header.setStretchLastSection(True)                          # última ocupa o resto
+
+        # (opcional) limita a largura máxima para não ficar enorme
+        for col in range(self.table.columnCount()):
+            header.setMaximumSectionSize(260)
+
+        self.table.setAlternatingRowColors(True)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SingleSelection)
+
+        # Botões
+        self.btn_new = QPushButton("Cadastrar Medição")
+        self.btn_batch = QPushButton("Atribuir/Exportar (5 selecionadas)")
+        self.btn_delete = QPushButton("Excluir selecionada")
+        self.btn_history = QPushButton("Histórico")
+        self.btn_refresh = QPushButton("Atualizar")
+
+        # Estilos/tamanhos
+        self.btn_new.setMinimumHeight(48)
+        self.btn_new.setStyleSheet("""
+        QPushButton {
+            background-color: #1976d2;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            border-radius: 6px;
+            padding: 10px 14px;
+        }
+        QPushButton:hover { background-color: #1565c0; }
+        """)
+
+        for b in (self.btn_batch, self.btn_delete, self.btn_history, self.btn_refresh):
+            b.setMinimumHeight(40)
+
+        # Sinais
+        self.btn_new.clicked.connect(self._on_new)
+        self.btn_batch.clicked.connect(self._on_batch)
+        self.btn_delete.clicked.connect(self._on_delete)
+        self.btn_history.clicked.connect(self.go_history)
+        self.btn_refresh.clicked.connect(self.refresh)
+
+        # Header
+        title = QLabel("Overview - Medições Pendentes")
+        title.setStyleSheet("font-size: 18px; font-weight: 700;")
+
+        top = QHBoxLayout()
+        top.addWidget(title)
+        top.addStretch()
+        top.addWidget(self.btn_new)
+        top.addWidget(self.btn_batch)
+        top.addWidget(self.btn_delete)
+        top.addWidget(self.btn_history)
+        top.addWidget(self.btn_refresh)
+
+        layout = QVBoxLayout()
+        layout.addLayout(top)
+        layout.addWidget(self.table)
+        self.setLayout(layout)
+
+        self.refresh()
+
+    def refresh(self) -> None:
+        items = self.repo.list_pending_all()
+        self.table.setRowCount(0)
+
+        for m in items:
+            r = self.table.rowCount()
+            self.table.insertRow(r)
+
+            chk = QTableWidgetItem()
+            chk.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+            chk.setCheckState(Qt.Unchecked)
+            self.table.setItem(r, 0, chk)
+
+            self.table.setItem(r, 1, QTableWidgetItem(str(m.id)))
+            self.table.setItem(r, 2, QTableWidgetItem(m.created_at))
+            self.table.setItem(r, 3, QTableWidgetItem(m.operador))
+            self.table.setItem(r, 4, QTableWidgetItem(m.projeto or ""))
+            self.table.setItem(r, 5, QTableWidgetItem(m.serie or ""))
+            self.table.setItem(r, 6, QTableWidgetItem(m.posto))
+
+    def _selected_ids(self) -> list[int]:
+        ids: list[int] = []
+        for r in range(self.table.rowCount()):
+            item = self.table.item(r, 0)  # checkbox
+            if item and item.checkState() == Qt.Checked:
+                ids.append(int(self.table.item(r, 1).text()))  # ID (coluna escondida)
+        return ids
+
+    def _on_new(self) -> None:
+        self.go_newedit()
+
+    def _on_batch(self) -> None:
+        ids = self._selected_ids()
+        if len(ids) != 5:
+            QMessageBox.warning(self, "Erro", "Selecione exatamente 5 medições para exportar.")
+            return
+        self.go_batch(ids)
+    
+    def delete_measurement(self, id_: int) -> None:
+        with self._connect() as con:
+            con.execute("DELETE FROM measurements WHERE id=?", [id_])
+
+    def _on_delete(self) -> None:
+        table = self.table
+
+        # procura 1a linha com checkbox marcado
+        id_ = None
+        for r in range(table.rowCount()):
+            chk = table.item(r, 0)
+            if chk and chk.checkState() == Qt.Checked:
+                id_ = int(table.item(r, 1).text())
+                break
+
+        if id_ is None:
+            QMessageBox.information(self, "Info", "Marque (checkbox) uma medição para excluir.")
+            return
+
+        resp = QMessageBox.question(
+            self,
+            "Confirmar exclusão",
+            f"Excluir a medição (ID {id_})?",
+        )
+        if resp != QMessageBox.Yes:
+            return
+
+        self.repo.delete_measurement(id_)
+        self.refresh()
+
+
+class NewEditPage(QWidget):
+    
+    def __init__(self, repo: Repo, go_overview) -> None:
+        super().__init__()
+        self.repo = repo
+        self.go_overview = go_overview
+        self._posto = "FUNDO"
         self.setWindowTitle("Medição de Camada - BLE")
 
         # BLE inputs (se quiser esconder depois, pode)
@@ -34,20 +202,26 @@ class MainWindow(QWidget):
         self.uuid = QLineEdit("06d1e5e7-79ad-4a71-8faa-373789f7d93c")
 
         # Cabeçalho
+        self.posto = QComboBox()
+        self.posto.addItems(["Pintura - Fundo", "Pintura - Acabamento", "Jateamento"])
+        self.posto.setCurrentIndex(-1)
+        self.posto.setPlaceholderText("Selecione...")
         self.projeto = QLineEdit()
         self.serie = QLineEdit()
         self.operador = QLineEdit()
-        self.posto = QComboBox()
-        self.posto.addItems(["Pintura - Fundo", "Pintura - Acabamento", "Jateamento"])
-        self.posto.setCurrentIndex(-1)  # começa vazio
-        self.posto.setPlaceholderText("Selecione...")
+        self._warned_operator_empty = False
 
         # Botões
+        self.btn_back = QPushButton("Voltar")
+        topbar = QHBoxLayout()
+        topbar.addWidget(self.btn_back)
+        topbar.addStretch()
         self.btn_start = QPushButton("Conectar / Iniciar")
         self.btn_stop = QPushButton("Parar / Desconectar")
         self.btn_stop.setEnabled(False)
         self.btn_export = QPushButton("Salvar")
         self.btn_clear_one = QPushButton("Limpar medição selecionada")
+        self.btn_clear_all = QPushButton("Limpar medições")
 
         self.btn_start.setStyleSheet("""
         QPushButton {
@@ -137,7 +311,7 @@ class MainWindow(QWidget):
         # ====== Layout cabeçalho ======
         header_box = QGroupBox("Dados")
         header_grid = QGridLayout()
-        
+
         header_grid.addWidget(QLabel("Posto:"), 0, 0)
         header_grid.addWidget(self.posto, 0, 1)
 
@@ -166,10 +340,12 @@ class MainWindow(QWidget):
         buttons.addWidget(self.btn_start)
         buttons.addWidget(self.btn_stop)
         buttons.addWidget(self.btn_clear_one)
+        buttons.addWidget(self.btn_clear_all)
         buttons.addWidget(self.btn_export)
 
         # ====== Layout principal ======
         layout = QVBoxLayout()
+        layout.addLayout(topbar) 
         layout.addWidget(header_box)
         layout.addWidget(ble_box)
         layout.addLayout(buttons)
@@ -184,8 +360,10 @@ class MainWindow(QWidget):
         # Sinais
         self.btn_start.clicked.connect(self.start)
         self.btn_stop.clicked.connect(self.stop)
+        self.btn_back.clicked.connect(self.go_back)
         self.btn_clear_one.clicked.connect(self.clear_selected_measurement)
-        self.btn_export.clicked.connect(self.export_to_excel)
+        self.btn_export.clicked.connect(self.save_pending)
+        self.btn_clear_all.clicked.connect(self.clear_measurements)
 
     def image_path_for_measure(self, measure_number: int) -> str:
         if 1 <= measure_number <= 6:
@@ -229,9 +407,23 @@ class MainWindow(QWidget):
 
     def set_override_index(self, index: int) -> None:
         self.override_index = index
-        # opcional: destacar o campo escolhido para correção
+
+        # destaca o campo selecionado
         for j, e in enumerate(self.measure_edits):
             e.setStyleSheet("" if j != index else "border: 2px solid #1976d2;")
+
+        # muda a imagem para o range dessa medição (index é 0..45, medição é 1..46)
+        self.update_image_for_measure(index + 1)
+
+    def get_posto_code(self) -> str | None:
+        txt = self.posto.currentText().strip()
+        if txt == "Pintura - Fundo":
+            return "FUNDO"
+        if txt == "Pintura - Acabamento":
+            return "ACAB"
+        if txt == "Jateamento":
+            return "JAT"
+        return None
 
     def clear_selected_measurement(self) -> None:
         if self.override_index is None:
@@ -251,19 +443,174 @@ class MainWindow(QWidget):
     def clear_measurements(self) -> None:
         for e in self.measure_edits:
             e.clear()
+            e.setStyleSheet("")
 
         self.next_index = 0
         self.override_index = None
 
-        # remove bordas de seleção/erro que você tenha aplicado
-        for e in self.measure_edits:
-            e.setStyleSheet("")
-        self.projeto.setStyleSheet("")
-        self.serie.setStyleSheet("")
-        self.operador.setStyleSheet("")
-
         self.update_image_for_measure(1)
         self.append_log("Medições limpas. Próxima medição vai para o campo 01.")
+
+        # opcional: volta scroll para o topo
+        self.scroll_measures.verticalScrollBar().setValue(0)
+
+    def finish_measurement(self) -> None:
+        # salva a medição atual
+        self.save_pending_silent()
+
+        resp = QMessageBox.question(
+            self,
+            "Continuar?",
+            "46 medições concluídas. Deseja continuar medindo (nova medição)?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+
+        if resp == QMessageBox.Yes:
+            # mantém Operador e Projeto (se existir), limpa só as medições
+            operador = self.operador.text()
+            projeto = self.projeto.text() if hasattr(self, "projeto") else ""
+
+            self.clear_measurements()
+            self.serie.clear()  # garante que a série fica vazia
+
+            self.operador.setText(operador)
+            if hasattr(self, "projeto"):
+                self.projeto.setText(projeto)
+
+            # volta o foco para a primeira medição
+            if self.measure_edits:
+                self.measure_edits[0].setFocus()
+            return
+
+        # Não: volta para overview
+        self.reset_form()
+        self.go_overview()
+
+    def save_pending(self) -> None:
+        operador = self.operador.text().strip()
+        if not operador:
+            QMessageBox.warning(self, "Erro", "Preencha Operador.")
+            return
+
+        posto_code = self.get_posto_code()
+        if not posto_code:
+            QMessageBox.warning(self, "Erro", "Selecione o Posto antes de salvar.")
+            return
+
+        projeto = self.projeto.text().strip() or None
+        serie = self.serie.text().strip() or None
+
+        values = [e.text().strip() for e in self.measure_edits]
+        if len(values) != 46:
+            QMessageBox.warning(self, "Erro", "Esperado 46 medições.")
+            return
+
+        self.repo.create_pending(
+            posto=posto_code,
+            operador=operador,
+            values=values,
+            projeto=projeto,
+            serie=serie,
+        )
+
+        QMessageBox.information(self, "OK", "Medição salva.")
+        self.clear_measurements()
+        # aqui você decide o que limpar/manter:
+        self.serie.clear()
+        self.go_overview()
+
+    def save_pending_silent(self) -> None:
+        operador = self.operador.text().strip()
+        if not operador:
+            QMessageBox.warning(self, "Erro", "Preencha Operador.")
+            return
+
+        posto_code = self.get_posto_code()
+        if not posto_code:
+            QMessageBox.warning(self, "Erro", "Selecione o Posto antes de salvar.")
+            return
+
+        values = [e.text().strip() for e in self.measure_edits]
+        if len(values) != 46 or not any(values):
+            QMessageBox.warning(self, "Erro", "Não há medições para salvar.")
+            return
+
+        projeto = self.projeto.text().strip() or None
+        serie = self.serie.text().strip() or None
+
+        self.repo.create_pending(
+            posto=posto_code,
+            operador=operador,
+            values=values,
+            projeto=projeto,
+            serie=serie,
+        )
+
+
+    def go_back(self) -> None:
+        has_any = (
+            any(e.text().strip() for e in self.measure_edits)
+            or self.operador.text().strip()
+            or self.projeto.text().strip()
+            or self.serie.text().strip()
+        )
+        if has_any:
+            resp = QMessageBox.question(self, "Confirmar", "Sair sem salvar? Os dados serão perdidos.")
+            if resp != QMessageBox.Yes:
+                return
+
+        self.reset_form()
+        self.go_overview()
+
+    def reset_form(self) -> None:
+        # limpa medições (46 campos + índices + imagem)
+        self.clear_measurements()
+
+        # limpa cabeçalho
+        self.operador.clear()
+        self.projeto.clear()
+        self.serie.clear()
+        self.posto.setCurrentIndex(-1)
+
+        # opcional: limpa log
+        self.log.clear()
+
+        # limpa seleção de override e bordas (por segurança)
+        self.override_index = None
+        for e in self.measure_edits:
+            e.setStyleSheet("")
+
+    @asyncSlot()
+    async def start(self) -> None:
+        mac = self.address.text().strip()
+        uuid = self.uuid.text().strip()
+        if not mac or not uuid:
+            QMessageBox.warning(self, "Erro", "Preencha MAC e UUID.")
+            return
+
+        self.btn_start.setEnabled(False)
+        try:
+            self.ble = BleNotifier(mac, uuid)
+            await self.ble.connect()
+            await self.ble.start(self.on_notify)
+            self.btn_stop.setEnabled(True)
+            self.append_log("Conectado e notificações ativas.")
+        except Exception as e:
+            self.append_log(f"Falha: {e}")
+            self.ble = None
+            self.btn_start.setEnabled(True)
+            self.btn_stop.setEnabled(False)
+
+    @asyncSlot()
+    async def stop(self) -> None:
+        self.btn_stop.setEnabled(False)
+        try:
+            if self.ble:
+                await self.ble.stop()
+                self.append_log("Desconectado.")
+        finally:
+            self.ble = None
+            self.btn_start.setEnabled(True)
 
     def validate_header_fields(self) -> bool:
         projeto = self.projeto.text().strip()
@@ -302,13 +649,32 @@ class MainWindow(QWidget):
         return ok
 
     def on_notify(self, sender: int, data: bytes) -> None:
+        if not self.operador.text().strip():
+            if not self._warned_operator_empty:
+                QMessageBox.warning(self, "Operador obrigatório", "Preencha o campo Operador antes de iniciar as medições.")
+                self._warned_operator_empty = True
+            return
+        else:
+            self._warned_operator_empty = False
+
+        posto_code = self.get_posto_code()
+        if not posto_code:
+            if not getattr(self, "_warned_posto_empty", False):
+                QMessageBox.warning(self, "Posto obrigatório", "Selecione o Posto antes de iniciar as medições.")
+                self._warned_posto_empty = True
+            return
+        else:
+            self._warned_posto_empty = False
+        
         value = self._extract_value_um(data)
         if value is None:
             self.append_log(f"Payload não reconhecido: {data!r}")
             return
 
+        was_override = self.override_index is not None
+
         # Decide onde escrever: correção (override) ou sequência (next_index)
-        if self.override_index is not None:
+        if was_override:
             idx = self.override_index
             self.override_index = None
 
@@ -329,6 +695,11 @@ class MainWindow(QWidget):
         # scroll até o campo preenchido
         self.scroll_measures.ensureWidgetVisible(edit_atual)
 
+        # Se acabamos de preencher a última medição (sequencial), finaliza
+        if (not was_override) and idx == 45:
+            self.finish_measurement()
+            return
+
         # atualiza imagem para a PRÓXIMA medição SEQUENCIAL (baseado em next_index)
         proxima_medicao = min(self.next_index + 1, 46)
         self.update_image_for_measure(proxima_medicao)
@@ -339,115 +710,207 @@ class MainWindow(QWidget):
             prox.setFocus()
             self.scroll_measures.ensureWidgetVisible(prox)
 
+    def set_posto(self, posto: str) -> None:
+        self._posto = posto
+        self.lbl_posto.setText(posto)
+        self.update_image_for_measure(1)  # opcional, mas recomendado
 
-    def export_to_excel(self) -> None:
-        projeto = self.projeto.text().strip()
-        serie = self.serie.text().strip()
-        operador = self.operador.text().strip()
-        posto = self.posto.currentText().strip()
-        if not posto:
-            QMessageBox.warning(self, "Erro", "Selecione o Posto antes de exportar.")
+
+class BatchExportPage(QWidget):
+    def __init__(self, repo: Repo, go_overview, go_history) -> None:
+        super().__init__()
+        self.repo = repo
+        self.go_overview = go_overview
+        self.go_history = go_history
+
+        self._posto = "FUNDO"
+        self._ids: list[int] = []
+
+        self.title = QLabel("Lote - Atribuir e Exportar 5")
+        self.project_global = QLineEdit()
+        self.project_global.setPlaceholderText("Projeto para aplicar a todos (opcional)")
+
+        self.btn_apply_project = QPushButton("Aplicar projeto a todos")
+        self.btn_export = QPushButton("Exportar 5 arquivos")
+        self.btn_back = QPushButton("Voltar")
+
+        self.btn_apply_project.clicked.connect(self._apply_project_all)
+        self.btn_export.clicked.connect(self._export)
+        self.btn_back.clicked.connect(self.go_overview)
+
+        self.table = QTableWidget(5, 3)
+        self.table.setHorizontalHeaderLabels(["ID", "Série (10 dígitos)", "Projeto (ABC1234)"])
+        self.table.setColumnHidden(0, True)
+        self.table.horizontalHeader().setStretchLastSection(True)
+
+        top = QGridLayout()
+        top.addWidget(self.title, 0, 0, 1, 3)
+        top.addWidget(QLabel("Projeto (aplicar a todos):"), 1, 0)
+        top.addWidget(self.project_global, 1, 1)
+        top.addWidget(self.btn_apply_project, 1, 2)
+
+        btns = QHBoxLayout()
+        btns.addWidget(self.btn_back)
+        btns.addStretch()
+        btns.addWidget(self.btn_export)
+
+        layout = QVBoxLayout()
+        layout.addLayout(top)
+        layout.addWidget(self.table)
+        layout.addLayout(btns)
+        self.setLayout(layout)
+
+    def load(self, ids: list[int]) -> None:
+        self._ids = ids
+        self.title.setText("Lote - 5 medições (postos podem misturar)")
+
+        measurements = self.repo.get_by_ids(ids)
+        # preenche tabela com o que já existir
+        for r, m in enumerate(measurements):
+            self.table.setItem(r, 0, QTableWidgetItem(str(m.id)))
+            self.table.setItem(r, 1, QTableWidgetItem(m.serie or ""))
+            self.table.setItem(r, 2, QTableWidgetItem(m.projeto or ""))
+
+    def _apply_project_all(self) -> None:
+        proj = self.project_global.text().strip()
+        if not proj:
             return
+        for r in range(self.table.rowCount()):
+            item = self.table.item(r, 2)
+            if item is None:
+                item = QTableWidgetItem("")
+                self.table.setItem(r, 2, item)
+            item.setText(proj)
 
-        medidas = [e.text().strip() for e in self.measure_edits]
+    def _export(self) -> None:
+        # validações
+        for r in range(self.table.rowCount()):
+            serie = (self.table.item(r, 1).text() if self.table.item(r, 1) else "").strip()
+            proj = (self.table.item(r, 2).text() if self.table.item(r, 2) else "").strip()
 
-        if not projeto or not serie or not operador:
-            QMessageBox.warning(
-                self,
-                "Erro",
-                "Preencha Projeto, Número de Série e Operador antes de exportar.",
+            if not RE_SERIE.fullmatch(serie):
+                QMessageBox.warning(self, "Erro", f"Linha {r+1}: Série inválida (10 dígitos).")
+                return
+            if not RE_PROJETO.fullmatch(proj):
+                QMessageBox.warning(self, "Erro", f"Linha {r+1}: Projeto inválido (ABC1234).")
+                return
+
+        # exporta 5
+        measurements = self.repo.get_by_ids(self._ids)
+        for r, m in enumerate(measurements):
+            serie = self.table.item(r, 1).text().strip()
+            proj = self.table.item(r, 2).text().strip()
+
+            # atualiza assignment
+            self.repo.update_assignment(m.id, proj, serie)
+
+            # exporta excel (com sufixo automático)
+            export_measurement_to_excel(
+                serie=serie,
+                projeto=proj,
+                operador=m.operador,
+                posto=m.posto,
+                created_at=m.created_at,
+                values=m.values,
             )
-            return
-        if not self.validate_header_fields():
-            return
 
-        '''if not any(medidas):
-            QMessageBox.warning(self, "Erro", "Não há medições para exportar.")
-            return'''
+            # marca como exportado (vai pro histórico)
+            self.repo.mark_exported(m.id)
 
-        row = {
-            "Data/Hora": datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
-            "Projeto": projeto,
-            "Número de Série": serie,
-            "Operador": operador,
-            "Posto": posto,
-        }
-        for i in range(46):
-            row[f"M{i+1:02d}"] = medidas[i] if i < len(medidas) else ""
-
-        df = pd.DataFrame([row])
-
-        default_name = f"medicoes_{serie}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        
-        export_dir = Path(r"C:\Users\z0052dfz\OneDrive - Siemens Energy\BACKUP\Arquivos aleatórios\Jato")
-        export_dir.mkdir(parents=True, exist_ok=True)
-
-        default_name = f"medicoes_{serie}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-
-        path = export_dir / default_name
-
-        try:
-            df.to_excel(str(path), index=False, sheet_name="Medições")
-            QMessageBox.information(self, "OK", f"Arquivo salvo em: {path}")
-            self.append_log(f"Salvo em: {path}")
-            self.clear_measurements()
-
-            # opcional: limpar também os campos de cabeçalho
-            self.projeto.clear()
-            self.serie.clear()
-            self.operador.clear()
-            self.posto.setCurrentIndex(-1)  # se você deixou com placeholder
-
-        except Exception as e:
-            QMessageBox.critical(self, "Erro", f"Falha ao salvar Excel: {e}")
-
-    @asyncSlot()
-    async def start(self) -> None:
-        mac = self.address.text().strip()
-        uuid = self.uuid.text().strip()
-
-        if not mac or not uuid:
-            QMessageBox.warning(self, "Erro", "Preencha MAC e UUID.")
-            return
-
-        self.btn_start.setEnabled(False)
-        self.append_log(f"Conectando em {mac} ...")
-
-        try:
-            self.ble = BleNotifier(mac, uuid)
-            await self.ble.connect()
-            await self.ble.start(self.on_notify)
-
-            self.append_log("Conectado e notificações ativas.")
-            self.btn_stop.setEnabled(True)
-
-        except Exception as e:
-            self.append_log(f"Falha: {e}")
-            self.ble = None
-            self.btn_start.setEnabled(True)
-            self.btn_stop.setEnabled(False)
+        QMessageBox.information(self, "OK", "5 arquivos exportados e enviados ao histórico.")
+        self.go_history()
 
 
-    @asyncSlot()
-    async def stop(self) -> None:
-        self.btn_stop.setEnabled(False)
-        try:
-            if self.ble:
-                await self.ble.stop()
-                self.append_log("Desconectado.")
-        finally:
-            self.ble = None
-            self.btn_start.setEnabled(True)
+class HistoryPage(QWidget):
+    def __init__(self, repo: Repo, go_overview) -> None:
+        super().__init__()
+        self.repo = repo
+        self.go_overview = go_overview
+
+        self.table = QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(["ID", "Exportado em", "Cadastro em", "Posto", "Série", "Operador"])
+        self.table.horizontalHeader().setStretchLastSection(True)
+
+        self.btn_back = QPushButton("Voltar")
+        self.btn_refresh = QPushButton("Atualizar")
+
+        self.btn_back.clicked.connect(self.go_overview)
+        self.btn_refresh.clicked.connect(self.refresh)
+
+        top = QHBoxLayout()
+        top.addWidget(self.btn_back)
+        top.addStretch()
+        top.addWidget(self.btn_refresh)
+
+        layout = QVBoxLayout()
+        layout.addLayout(top)
+        layout.addWidget(self.table)
+        self.setLayout(layout)
+
+        self.refresh()
+
+    def refresh(self) -> None:
+        items = self.repo.list_history(limit=300)
+        self.table.setRowCount(0)
+        for m in items:
+            r = self.table.rowCount()
+            self.table.insertRow(r)
+            self.table.setItem(r, 0, QTableWidgetItem(str(m.id)))
+            self.table.setItem(r, 1, QTableWidgetItem(m.exported_at or ""))
+            self.table.setItem(r, 2, QTableWidgetItem(m.created_at))
+            self.table.setItem(r, 3, QTableWidgetItem(m.posto))
+            self.table.setItem(r, 4, QTableWidgetItem(m.serie or ""))
+            self.table.setItem(r, 5, QTableWidgetItem(m.operador))
+
+
+class AppWindow(QStackedWidget):
+    def __init__(self) -> None:
+        super().__init__()
+        self.repo = Repo("medicoes.db")
+
+        self.overview = OverviewPage(
+            repo=self.repo,
+            go_newedit=self.show_newedit,
+            go_batch=self.show_batch,
+            go_history=self.show_history,
+        )
+        self.newedit = NewEditPage(repo=self.repo, go_overview=self.show_overview)
+        self.batch = BatchExportPage(repo=self.repo, go_overview=self.show_overview, go_history=self.show_history)
+        self.history = HistoryPage(repo=self.repo, go_overview=self.show_overview)
+
+        self.addWidget(self.overview)
+        self.addWidget(self.newedit)
+        self.addWidget(self.batch)
+        self.addWidget(self.history)
+
+        self.setWindowTitle("Jato - Medições")
+        self.setCurrentWidget(self.overview)
+        self.resize(900, 600)
+
+    def show_overview(self) -> None:
+        self.overview.refresh()
+        self.setCurrentWidget(self.overview)
+
+    def show_newedit(self) -> None:
+        # opcional: resetar a tela antes de abrir
+        if hasattr(self.newedit, "reset_form"):
+            self.newedit.reset_form()
+        self.setCurrentWidget(self.newedit)
+
+    def show_batch(self, ids: list[int]) -> None:
+        self.batch.load(ids)
+
+    def show_history(self) -> None:
+        self.history.refresh()
+        self.setCurrentWidget(self.history)
 
 
 def main() -> None:
     app = QApplication(sys.argv)
-
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
 
-    w = MainWindow()
-    w.resize(750, 800)
+    w = AppWindow()
     w.show()
 
     with loop:
