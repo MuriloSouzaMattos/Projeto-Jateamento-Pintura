@@ -137,7 +137,6 @@ class Repo:
             exported_at=r["exported_at"],
         )
     
-
     def delete_measurement(self, id_: int) -> None:
         with self._connect() as con:
             con.execute("DELETE FROM measurements WHERE id=?", [id_])
@@ -145,6 +144,10 @@ class Repo:
     def list_pending_all(self) -> list[Measurement]:
         with self._connect() as con:
             rows = con.execute(
-                "SELECT * FROM measurements WHERE status='PENDING' ORDER BY id ASC"
+                """
+                SELECT * FROM measurements
+                WHERE status='PENDING'
+                ORDER BY posto ASC, datetime(created_at) DESC, id DESC
+                """
             ).fetchall()
         return [self._row_to_measurement(r) for r in rows]

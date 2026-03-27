@@ -35,6 +35,16 @@ RE_OPERADOR = re.compile(r"^Z\d{3}[A-Z0-9]{4}$")
 RE_SERIE = re.compile(r"^\d{10}$")
 RE_PROJETO = re.compile(r"^[A-Z]{3}\d{4}$")
 
+IMAGE_PATHS = {
+    "Topo": r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Topo.png",
+    "Frente1": r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Frente 1.png",
+    "Frente2": r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Frente 2.png",
+    "Lateral1": r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Lateral 1.png",
+    "Lateral2": r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Lateral 2.png",
+    "Fundo": r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Fundo.png",
+}
+
+
 POSTOS = [
     ("FUNDO", "Pintura - Fundo"),
     ("ACAB", "Pintura - Acabamento"),
@@ -70,7 +80,7 @@ class OverviewPage(QWidget):
 
         # Botões
         self.btn_new = QPushButton("Cadastrar Medição")
-        self.btn_batch = QPushButton("Atribuir/Exportar (5 selecionadas)")
+        self.btn_batch = QPushButton("Exportar")
         self.btn_delete = QPushButton("Excluir selecionada")
         self.btn_history = QPushButton("Histórico")
         self.btn_refresh = QPushButton("Atualizar")
@@ -100,11 +110,21 @@ class OverviewPage(QWidget):
         self.btn_refresh.clicked.connect(self.refresh)
 
         # Header
-        title = QLabel("Overview - Medições Pendentes")
+        logo = QLabel()
+        pix = QPixmap(r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Siemens_Energy.png")  # ajuste o caminho
+        logo.setPixmap(pix.scaledToHeight(28, Qt.SmoothTransformation))
+
+        title = QLabel("Medições Pendentes")
         title.setStyleSheet("font-size: 18px; font-weight: 700;")
 
+        title_box = QHBoxLayout()
+        title_box.addWidget(logo)
+        title_box.addSpacing(8)
+        title_box.addWidget(title)
+        title_box.addStretch()
+
         top = QHBoxLayout()
-        top.addWidget(title)
+        top.addLayout(title_box)
         top.addStretch()
         top.addWidget(self.btn_new)
         top.addWidget(self.btn_batch)
@@ -123,6 +143,11 @@ class OverviewPage(QWidget):
         items = self.repo.list_pending_all()
         self.table.setRowCount(0)
 
+        def ro(text: str) -> QTableWidgetItem:
+            it = QTableWidgetItem(text)
+            it.setFlags(it.flags() & ~Qt.ItemIsEditable)
+            return it
+
         for m in items:
             r = self.table.rowCount()
             self.table.insertRow(r)
@@ -132,12 +157,12 @@ class OverviewPage(QWidget):
             chk.setCheckState(Qt.Unchecked)
             self.table.setItem(r, 0, chk)
 
-            self.table.setItem(r, 1, QTableWidgetItem(str(m.id)))
-            self.table.setItem(r, 2, QTableWidgetItem(m.created_at))
-            self.table.setItem(r, 3, QTableWidgetItem(m.operador))
-            self.table.setItem(r, 4, QTableWidgetItem(m.projeto or ""))
-            self.table.setItem(r, 5, QTableWidgetItem(m.serie or ""))
-            self.table.setItem(r, 6, QTableWidgetItem(m.posto))
+            self.table.setItem(r, 1, ro(str(m.id)))
+            self.table.setItem(r, 2, ro(m.created_at))
+            self.table.setItem(r, 3, ro(m.operador))
+            self.table.setItem(r, 4, ro(m.projeto or ""))
+            self.table.setItem(r, 5, ro(m.serie or ""))
+            self.table.setItem(r, 6, ro(m.posto))
 
     def _selected_ids(self) -> list[int]:
         ids: list[int] = []
@@ -152,8 +177,8 @@ class OverviewPage(QWidget):
 
     def _on_batch(self) -> None:
         ids = self._selected_ids()
-        if len(ids) != 5:
-            QMessageBox.warning(self, "Erro", "Selecione exatamente 5 medições para exportar.")
+        if len(ids) == 0:
+            QMessageBox.warning(self, "Erro", "Selecione pelo menos 1 medição para exportar.")
             return
         self.go_batch(ids)
     
@@ -173,7 +198,7 @@ class OverviewPage(QWidget):
                 break
 
         if id_ is None:
-            QMessageBox.information(self, "Info", "Marque (checkbox) uma medição para excluir.")
+            QMessageBox.information(self, "Info", "Marque uma medição para excluir.")
             return
 
         resp = QMessageBox.question(
@@ -282,10 +307,8 @@ class NewEditPage(QWidget):
         self.scroll_measures.setWidget(measures_box)
 
         # ====== IMAGEM (lado direito) ======
-        self.image_label = QLabel()
-        self.image_label.setAlignment(Qt.AlignCenter)
 
-        # caminhos das imagens (ajuste para os seus arquivos)
+        # caminhos das imagens
         self.img_1_6 = r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Topo.png"
         self.img_7_15 = r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Frente 1.png"
         self.img_16_24 = r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Frente 2.png"
@@ -293,19 +316,33 @@ class NewEditPage(QWidget):
         self.img_33_40 = r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Lateral 2.png"
         self.img_41_46 = r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Fundo.png"
 
-        self._current_img_path = None  # para não recarregar a mesma imagem toda hora
+        self._current_img_path = None
+        self._original_pixmap = QPixmap()
 
-        # mostra a imagem inicial (para medição 1)
-        self.update_image_for_measure(1)
+        # label da imagem
+        self.image_label = QLabel()
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setScaledContents(False)
 
+        # seta (overlay simples)
+        self.arrow_label = QLabel(self.image_label)  # filho do image_label (fica por cima)
+        self.arrow_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+
+        arrow_pix = QPixmap(r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\seta verde.png")
+        if not arrow_pix.isNull():
+            self.arrow_label.setPixmap(arrow_pix.scaledToWidth(45, Qt.SmoothTransformation))
+        self.arrow_label.hide()
+
+        # container do groupbox
         image_box = QGroupBox("Referência")
-        image_layout = QVBoxLayout()
+        image_layout = QVBoxLayout(image_box)
         image_layout.addWidget(self.image_label)
-        image_box.setLayout(image_layout)
+
+        self.update_image_for_measure(1)
 
         # Medições + imagem lado a lado
         measures_and_image = QHBoxLayout()
-        measures_and_image.addWidget(self.scroll_measures , 2)
+        measures_and_image.addWidget(self.scroll_measures, 2)
         measures_and_image.addWidget(image_box, 1)
 
         # ====== Layout cabeçalho ======
@@ -315,14 +352,14 @@ class NewEditPage(QWidget):
         header_grid.addWidget(QLabel("Posto:"), 0, 0)
         header_grid.addWidget(self.posto, 0, 1)
 
-        header_grid.addWidget(QLabel("Projeto:"), 1, 0)
-        header_grid.addWidget(self.projeto, 1, 1)
+        header_grid.addWidget(QLabel("Operador:"), 1, 0)
+        header_grid.addWidget(self.operador, 1, 1)
 
-        header_grid.addWidget(QLabel("Número de Série:"), 2, 0)
-        header_grid.addWidget(self.serie, 2, 1)
+        header_grid.addWidget(QLabel("Projeto:"), 2, 0)
+        header_grid.addWidget(self.projeto, 2, 1)
 
-        header_grid.addWidget(QLabel("Operador:"), 3, 0)
-        header_grid.addWidget(self.operador, 3, 1)
+        header_grid.addWidget(QLabel("Número de Série:"), 3, 0)
+        header_grid.addWidget(self.serie, 3, 1)
 
         header_box.setLayout(header_grid)
 
@@ -343,15 +380,25 @@ class NewEditPage(QWidget):
         buttons.addWidget(self.btn_clear_all)
         buttons.addWidget(self.btn_export)
 
+        # ====== Conteúdo rolável (para notebook) ======
+        central_widget = QWidget()
+        central_layout = QVBoxLayout(central_widget)
+        central_layout.addWidget(header_box)
+        central_layout.addWidget(ble_box)
+        central_layout.addLayout(buttons)
+        central_layout.addLayout(measures_and_image)
+        central_layout.addWidget(QLabel("Log:"))
+        central_layout.addWidget(self.log)
+        central_layout.addStretch()
+
+        scroll_page = QScrollArea()
+        scroll_page.setWidgetResizable(True)
+        scroll_page.setWidget(central_widget)
+
         # ====== Layout principal ======
         layout = QVBoxLayout()
-        layout.addLayout(topbar) 
-        layout.addWidget(header_box)
-        layout.addWidget(ble_box)
-        layout.addLayout(buttons)
-        layout.addLayout(measures_and_image)
-        layout.addWidget(QLabel("Log:"))
-        layout.addWidget(self.log)
+        layout.addLayout(topbar)      # topbar fixo
+        layout.addWidget(scroll_page) # restante rolável
         self.setLayout(layout)
 
         # BLE controller
@@ -364,6 +411,18 @@ class NewEditPage(QWidget):
         self.btn_clear_one.clicked.connect(self.clear_selected_measurement)
         self.btn_export.clicked.connect(self.save_pending)
         self.btn_clear_all.clicked.connect(self.clear_measurements)
+    
+    def update_image_for_measure(self, measure_number: int) -> None:
+        path = self.image_path_for_measure(measure_number)
+        if path != self._current_img_path:
+            self._current_img_path = path
+            self._original_pixmap = QPixmap(path)
+
+        if self._original_pixmap.isNull():
+            self.image_label.setText(f"Imagem não encontrada: {path}")
+            return
+
+        self._apply_scaled_pixmap()
 
     def image_path_for_measure(self, measure_number: int) -> str:
         if 1 <= measure_number <= 6:
@@ -376,9 +435,24 @@ class NewEditPage(QWidget):
             return self.img_25_32
         if 33 <= measure_number <= 40:
             return self.img_33_40
-        if 41 <= measure_number <= 46:
-            return self.img_41_46
-        return self.img_41_46  # fallback
+        return self.img_41_46
+
+    def _apply_scaled_pixmap(self) -> None:
+        if self._original_pixmap.isNull():
+            return
+        if self.image_label.width() <= 10 or self.image_label.height() <= 10:
+            return
+
+        scaled = self._original_pixmap.scaled(
+            self.image_label.size(),
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation,
+        )
+        self.image_label.setPixmap(scaled)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._apply_scaled_pixmap()
 
     def update_image_for_measure(self, measure_number: int) -> None:
         path = self.image_path_for_measure(measure_number)
@@ -393,6 +467,12 @@ class NewEditPage(QWidget):
 
         self.image_label.setPixmap(pixmap.scaledToWidth(320, Qt.SmoothTransformation))
         self._current_img_path = path
+        # faz a imagem ocupar o container
+
+    def set_arrow_pos(self, x: int, y: int) -> None:
+        # x,y são pixels
+        self.arrow_label.move(x, y)
+        self.arrow_label.show()
 
     def append_log(self, text: str) -> None:
         self.log.append(text)
@@ -412,7 +492,6 @@ class NewEditPage(QWidget):
         for j, e in enumerate(self.measure_edits):
             e.setStyleSheet("" if j != index else "border: 2px solid #1976d2;")
 
-        # muda a imagem para o range dessa medição (index é 0..45, medição é 1..46)
         self.update_image_for_measure(index + 1)
 
     def get_posto_code(self) -> str | None:
@@ -486,8 +565,37 @@ class NewEditPage(QWidget):
         self.reset_form()
         self.go_overview()
 
+    def validate_fields_for_save(self) -> bool:
+        operador = self.operador.text().strip()
+        projeto = self.projeto.text().strip()
+        serie = self.serie.text().strip()
+
+        posto_code = self.get_posto_code()
+        if not posto_code:
+            QMessageBox.warning(self, "Erro", "Selecione o Posto.")
+            return False
+
+        if not RE_OPERADOR.fullmatch(operador):
+            QMessageBox.warning(self, "Erro", "Operador inválido. Exemplo: Z123AB4C")
+            return False
+
+        # Projeto e Série: se você quer obrigatórios, valide sempre.
+        # Se forem opcionais, valide só quando preenchidos:
+        if projeto and not RE_PROJETO.fullmatch(projeto):
+            QMessageBox.warning(self, "Erro", "Projeto inválido. Exemplo: ABC1234")
+            return False
+
+        if serie and not RE_SERIE.fullmatch(serie):
+            QMessageBox.warning(self, "Erro", "Número de Série inválido. Deve ter 10 dígitos.")
+            return False
+
+        return True
+
     def save_pending(self) -> None:
         operador = self.operador.text().strip()
+        if not self.validate_fields_for_save():
+            return
+        
         if not operador:
             QMessageBox.warning(self, "Erro", "Preencha Operador.")
             return
@@ -521,6 +629,10 @@ class NewEditPage(QWidget):
 
     def save_pending_silent(self) -> None:
         operador = self.operador.text().strip()
+
+        if not self.validate_fields_for_save():
+            return
+        
         if not operador:
             QMessageBox.warning(self, "Erro", "Preencha Operador.")
             return
@@ -545,7 +657,6 @@ class NewEditPage(QWidget):
             projeto=projeto,
             serie=serie,
         )
-
 
     def go_back(self) -> None:
         has_any = (
@@ -579,6 +690,7 @@ class NewEditPage(QWidget):
         self.override_index = None
         for e in self.measure_edits:
             e.setStyleSheet("")
+        self.update_image_for_measure(1)
 
     @asyncSlot()
     async def start(self) -> None:
@@ -702,6 +814,7 @@ class NewEditPage(QWidget):
 
         # atualiza imagem para a PRÓXIMA medição SEQUENCIAL (baseado em next_index)
         proxima_medicao = min(self.next_index + 1, 46)
+        proxima_medicao = min(self.next_index + 1, 46)
         self.update_image_for_measure(proxima_medicao)
 
         # opcional: foco no próximo campo sequencial (não no corrigido)
@@ -726,22 +839,31 @@ class BatchExportPage(QWidget):
         self._posto = "FUNDO"
         self._ids: list[int] = []
 
-        self.title = QLabel("Lote - Atribuir e Exportar 5")
+        self.title = QLabel("Lote - Atribuir e Exportar")
         self.project_global = QLineEdit()
         self.project_global.setPlaceholderText("Projeto para aplicar a todos (opcional)")
 
-        self.btn_apply_project = QPushButton("Aplicar projeto a todos")
-        self.btn_export = QPushButton("Exportar 5 arquivos")
+        self.btn_apply_project = QPushButton("Aplicar Projeto a todos")
+        self.btn_export = QPushButton("Exportar arquivos")
         self.btn_back = QPushButton("Voltar")
 
         self.btn_apply_project.clicked.connect(self._apply_project_all)
         self.btn_export.clicked.connect(self._export)
         self.btn_back.clicked.connect(self.go_overview)
 
-        self.table = QTableWidget(5, 3)
-        self.table.setHorizontalHeaderLabels(["ID", "Série (10 dígitos)", "Projeto (ABC1234)"])
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["ID", "Projeto", "Número de Série"])
         self.table.setColumnHidden(0, True)
         self.table.horizontalHeader().setStretchLastSection(True)
+
+        header = self.table.horizontalHeader()
+
+        # ID (col 0) está oculto
+        header.setSectionResizeMode(0, QHeaderView.Fixed)
+
+        # Projeto e Série ocupam a largura igualmente
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
 
         top = QGridLayout()
         top.addWidget(self.title, 0, 0, 1, 3)
@@ -762,21 +884,24 @@ class BatchExportPage(QWidget):
 
     def load(self, ids: list[int]) -> None:
         self._ids = ids
-        self.title.setText("Lote - 5 medições (postos podem misturar)")
+        self.title.setText(f"Lote - {len(ids)} medições")
 
         measurements = self.repo.get_by_ids(ids)
-        # preenche tabela com o que já existir
-        for r, m in enumerate(measurements):
+
+        self.table.setRowCount(0)
+        for m in measurements:
+            r = self.table.rowCount()
+            self.table.insertRow(r)
             self.table.setItem(r, 0, QTableWidgetItem(str(m.id)))
-            self.table.setItem(r, 1, QTableWidgetItem(m.serie or ""))
-            self.table.setItem(r, 2, QTableWidgetItem(m.projeto or ""))
+            self.table.setItem(r, 1, QTableWidgetItem(m.projeto or ""))
+            self.table.setItem(r, 2, QTableWidgetItem(m.serie or ""))
 
     def _apply_project_all(self) -> None:
         proj = self.project_global.text().strip()
         if not proj:
             return
         for r in range(self.table.rowCount()):
-            item = self.table.item(r, 2)
+            item = self.table.item(r, 1)
             if item is None:
                 item = QTableWidgetItem("")
                 self.table.setItem(r, 2, item)
@@ -785,21 +910,21 @@ class BatchExportPage(QWidget):
     def _export(self) -> None:
         # validações
         for r in range(self.table.rowCount()):
-            serie = (self.table.item(r, 1).text() if self.table.item(r, 1) else "").strip()
-            proj = (self.table.item(r, 2).text() if self.table.item(r, 2) else "").strip()
+            proj = (self.table.item(r, 1).text() if self.table.item(r, 1) else "").strip()
+            serie = (self.table.item(r, 2).text() if self.table.item(r, 2) else "").strip()
 
             if not RE_SERIE.fullmatch(serie):
-                QMessageBox.warning(self, "Erro", f"Linha {r+1}: Série inválida (10 dígitos).")
+                QMessageBox.warning(self, "Erro", f"Linha {r+1}: Número de Série inválida (10 dígitos).")
                 return
             if not RE_PROJETO.fullmatch(proj):
-                QMessageBox.warning(self, "Erro", f"Linha {r+1}: Projeto inválido (ABC1234).")
+                QMessageBox.warning(self, "Erro", f"Linha {r+1}: Projeto inválido (SEF0500).")
                 return
 
         # exporta 5
         measurements = self.repo.get_by_ids(self._ids)
         for r, m in enumerate(measurements):
-            serie = self.table.item(r, 1).text().strip()
-            proj = self.table.item(r, 2).text().strip()
+            proj = self.table.item(r, 1).text().strip()
+            serie = self.table.item(r, 2).text().strip()
 
             # atualiza assignment
             self.repo.update_assignment(m.id, proj, serie)
@@ -817,7 +942,7 @@ class BatchExportPage(QWidget):
             # marca como exportado (vai pro histórico)
             self.repo.mark_exported(m.id)
 
-        QMessageBox.information(self, "OK", "5 arquivos exportados e enviados ao histórico.")
+        QMessageBox.information(self, "OK", "Arquivos exportados e enviados ao histórico.")
         self.go_history()
 
 
@@ -883,7 +1008,7 @@ class AppWindow(QStackedWidget):
         self.addWidget(self.batch)
         self.addWidget(self.history)
 
-        self.setWindowTitle("Jato - Medições")
+        self.setWindowTitle("Medição de Camadas - SIEMENS ENERGY")
         self.setCurrentWidget(self.overview)
         self.resize(900, 600)
 
@@ -899,6 +1024,7 @@ class AppWindow(QStackedWidget):
 
     def show_batch(self, ids: list[int]) -> None:
         self.batch.load(ids)
+        self.setCurrentWidget(self.batch)
 
     def show_history(self) -> None:
         self.history.refresh()
@@ -907,11 +1033,17 @@ class AppWindow(QStackedWidget):
 
 def main() -> None:
     app = QApplication(sys.argv)
+    app.setStyleSheet("""
+    QTableWidget::item:selected {
+        background-color: #cfe8ff;  /* azul claro */
+        color: #000000;
+    }
+    """)
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
 
     w = AppWindow()
-    w.show()
+    w.showMaximized()
 
     with loop:
         loop.run_forever()
