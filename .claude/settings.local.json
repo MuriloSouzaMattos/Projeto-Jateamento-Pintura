@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.\\(txt|md|rst|ini|cfg|json\\)$\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''main.py''\\).read\\(\\)\\); print\\(''Sintaxe OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''main.py'', encoding=''utf-8''\\).read\\(\\)\\); print\\(''Sintaxe OK''\\)\")",
+      "WebFetch(domain:flet.dev)",
+      "WebFetch(domain:docs.flet.dev)",
+      "Bash(source venv/Scripts/activate)",
+      "Bash(C:/Users/jejun/programs/Projeto-Jateamento-Pintura/venv/Scripts/python.exe -c \"import ast; ast.parse\\(open\\(''main.py''\\).read\\(\\)\\); print\\(''Syntax OK''\\)\")",
+      "Bash(C:/Users/jejun/programs/Projeto-Jateamento-Pintura/venv/Scripts/python.exe -c \"import flet; print\\(flet.__version__\\)\")",
+      "Bash(C:/Users/jejun/programs/Projeto-Jateamento-Pintura/venv/Scripts/python.exe -c \":*)",
+      "Bash(python -m playwright --version)",
+      "Bash(python3 -m playwright --version)",
+      "Bash(where playwright:*)",
+      "Bash(npx playwright:*)",
+      "Bash(C:/Users/jejun/programs/Projeto-Jateamento-Pintura/venv/Scripts/pip.exe install:*)",
+      "Bash(C:/Users/jejun/AppData/Local/Programs/Python/Python312/python.exe -m pip install playwright)",
+      "Bash(C:/Users/jejun/AppData/Local/Programs/Python/Python312/python.exe -m playwright install chromium)",
+      "Bash(C:/Users/jejun/AppData/Local/Programs/Python/Python312/python.exe -m pip install playwright --index-url https://pypi.org/simple/)",
+      "Bash(tasklist)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8550)",
+      "Bash(taskkill //F //IM python.exe)",
+      "Bash(C:/Users/jejun/AppData/Local/Programs/Python/Python312/python.exe -c \"import pywinauto; print\\(''pywinauto OK''\\)\")",
+      "Bash(C:/Users/jejun/AppData/Local/Programs/Python/Python312/python.exe -m pip install pywinauto)",
+      "Bash(C:/Users/jejun/AppData/Local/Programs/Python/Python312/python.exe -c \":*)",
+      "Bash(C:/Users/jejun/AppData/Local/Programs/Python/Python312/python.exe qa_test.py)",
+      "Bash(C:/Users/jejun/AppData/Local/Programs/Python/Python312/python.exe -X utf8 qa_test.py)",
+      "Bash(C:/Users/jejun/AppData/Local/Programs/Python/Python312/python.exe -X utf8 -c \":*)",
+      "Bash(C:/Users/jejun/AppData/Local/Programs/Python/Python312/python.exe -m pip install pillow pygetwindow)",
+      "Bash(C:/Users/jejun/programs/Projeto-Jateamento-Pintura/venv/Scripts/python.exe -c \"\nimport flet as ft, inspect\nsig = inspect.signature\\(ft.AnimatedSwitcher.__init__\\)\nprint\\('AnimatedSwitcher params:', list\\(sig.parameters.keys\\(\\)\\)\\)\n\" 2>&1)",
+      "Bash(C:/Users/jejun/programs/Projeto-Jateamento-Pintura/venv/Scripts/python.exe -c \"\nimport flet.controls.alignment as a\nprint\\(dir\\(a\\)\\)\n\" 2>&1)",
+      "Bash(C:/Users/jejun/programs/Projeto-Jateamento-Pintura/venv/Scripts/python.exe -c \"\nimport flet as ft\ntry:\n    a = ft.alignment.center\n    print\\('ft.alignment.center works:', a\\)\nexcept AttributeError as e:\n    print\\('ft.alignment.center FAILS:', e\\)\n    try:\n        a = ft.Alignment\\(0, 0\\)\n        print\\('ft.Alignment\\(0,0\\) works:', a\\)\n    except Exception as e2:\n        print\\('Alignment\\(0,0\\) failed:', e2\\)\n\" 2>&1)",
+      "Bash(C:/Users/jejun/programs/Projeto-Jateamento-Pintura/venv/Scripts/python.exe -c \"\nimport flet as ft\nprint\\('ft.BoxFit values:', list\\(ft.BoxFit\\)\\)\n\" 2>&1)",
+      "Bash(C:/Users/jejun/programs/Projeto-Jateamento-Pintura/venv/Scripts/python.exe -c \"\nimport flet as ft, inspect\nsig = inspect.signature\\(ft.TextStyle.__init__\\)\nparams = list\\(sig.parameters.keys\\(\\)\\)\nprint\\('ft.TextStyle params:', params\\)\nfor p in params:\n    if 'letter' in p.lower\\(\\) or 'spacing' in p.lower\\(\\):\n        print\\(f'  Found: {p}'\\)\n\" 2>&1)",
+      "Bash(C:/Users/jejun/programs/Projeto-Jateamento-Pintura/venv/Scripts/python.exe -c \"\nimport flet as ft, inspect\nsig = inspect.signature\\(ft.Dropdown.__init__\\)\nparams = list\\(sig.parameters.keys\\(\\)\\)\nprint\\('ft.Dropdown params:', params\\)\n\" 2>&1)",
+      "Bash(C:/Users/jejun/programs/Projeto-Jateamento-Pintura/venv/Scripts/python.exe -c \"\nimport flet as ft, inspect\nsig = inspect.signature\\(ft.Dropdown.__init__\\)\nparams = list\\(sig.parameters.keys\\(\\)\\)\nchecks = ['on_change', 'focused_border_color', 'hint_text', 'hint_style', 'text_style', 'border_color', 'focused_border_color', 'content_padding', 'fill_color', 'border_radius']\nfor c in checks:\n    print\\(f'{c}: {\\\\\"EXISTS\\\\\" if c in params else \\\\\"MISSING\\\\\"}'\\)\n\" 2>&1)",
+      "Bash(C:/Users/jejun/programs/Projeto-Jateamento-Pintura/venv/Scripts/python.exe -c \"\nimport ast\nwith open\\('C:/Users/jejun/programs/Projeto-Jateamento-Pintura/main.py'\\) as f:\n    src = f.read\\(\\)\nast.parse\\(src\\)\nprint\\('Syntax OK'\\)\n\" 2>&1)"
+    ]
+  }
+}
