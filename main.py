@@ -367,9 +367,77 @@ class NewEditPage(QWidget):
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setScaledContents(False)
 
+        self.arrow_positions = {
+            
+            "Topo": {
+                1: (220, 440),
+                2: (270, 400),
+                3: (270, 480),
+                4: (310, 440),
+                5: (330, 540),
+                6: (380, 500),
+            },
+
+            "Frente1": {
+                7: (205, 355),
+                8: (250, 390),
+                9: (310, 415),
+                10: (225, 500),
+                11: (260, 530),
+                12: (310, 570),
+                13: (225, 630),
+                14: (260, 665),
+                15: (310, 700),
+            },
+
+            "Frente2": {
+                16: (225, 350),
+                17: (265, 380),
+                18: (330, 410),
+                19: (245, 490),
+                20: (280, 530),
+                21: (325, 565),
+                22: (240, 625),
+                23: (280, 660),
+                24: (325, 695),
+            },
+
+            "Lateral1": {
+                25: (275, 180),
+                26: (330, 145),
+                27: (270, 360),
+                28: (325, 320),
+                29: (275, 445),
+                30: (325, 410),
+                31: (275, 630),
+                32: (325, 590),
+            },
+
+            "Lateral2": {
+                33: (240, 180),
+                34: (290, 145),
+                35: (235, 360),
+                36: (290, 320),
+                37: (235, 445),
+                38: (290, 410),
+                39: (230, 630),
+                40: (290, 590),
+            },
+
+            "Fundo": {
+                41: (225, 410),
+                42: (275, 360),
+                43: (275, 490),
+                44: (320, 430),
+                45: (315, 545),
+                46: (365, 490),
+            }
+        }
+
         # seta (overlay simples)
         self.arrow_label = QLabel(self.image_label)
         self.arrow_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.arrow_label.setStyleSheet("background: transparent;")
 
         arrow_pix = QPixmap(os.path.join(images_dir, "seta verde.png"))
         if not arrow_pix.isNull():
@@ -377,8 +445,7 @@ class NewEditPage(QWidget):
                 arrow_pix.scaledToWidth(45, Qt.SmoothTransformation)
             )
 
-        self.arrow_label.move(50, 50)
-        self.arrow_label.show()
+        self.move_arrow_to_measure(1)
 
         # container do groupbox
         image_box = QGroupBox("Referência")
@@ -493,25 +560,37 @@ class NewEditPage(QWidget):
         super().resizeEvent(event)
         self._apply_scaled_pixmap()
 
-    def update_image_for_measure(self, measure_number: int) -> None:
-        path = self.image_path_for_measure(measure_number)
-        if path == self._current_img_path:
-            return
-
-        pixmap = QPixmap(path)
-        if pixmap.isNull():
-            self.image_label.setText(f"Imagem não encontrada: {path}")
-            self._current_img_path = None
-            return
-
-        self.image_label.setPixmap(pixmap.scaledToWidth(320, Qt.SmoothTransformation))
-        self._current_img_path = path
-        # faz a imagem ocupar o container
-
     def set_arrow_pos(self, x: int, y: int) -> None:
         # x,y são pixels
         self.arrow_label.move(x, y)
         self.arrow_label.show()
+    
+    def move_arrow_to_measure(self, measure_number):
+        for image_name, measures in self.arrow_positions.items():
+            if measure_number in measures:
+
+                x, y = measures[measure_number]
+
+                pixmap = self.image_label.pixmap()
+
+                if pixmap:
+
+                    label_w = self.image_label.width()
+                    label_h = self.image_label.height()
+
+                    img_w = pixmap.width()
+                    img_h = pixmap.height()
+
+                    scale_x = label_w / img_w
+                    scale_y = label_h / img_h
+
+                    x = int(x * scale_x)
+                    y = int(y * scale_y)
+
+                self.arrow_label.move(x, y)
+                self.arrow_label.show()
+
+                break
 
     def append_log(self, text: str) -> None:
         self.log.append(text)
@@ -532,6 +611,7 @@ class NewEditPage(QWidget):
             e.setStyleSheet("" if j != index else "border: 2px solid #1976d2;")
 
         self.update_image_for_measure(index + 1)
+        self.move_arrow_to_measure(index + 1)
 
     def get_posto_code(self) -> str | None:
         txt = self.posto.currentText().strip()
@@ -894,8 +974,8 @@ class NewEditPage(QWidget):
 
         # atualiza imagem para a PRÓXIMA medição SEQUENCIAL (baseado em next_index)
         proxima_medicao = min(self.next_index + 1, 46)
-        proxima_medicao = min(self.next_index + 1, 46)
         self.update_image_for_measure(proxima_medicao)
+        self.move_arrow_to_measure(proxima_medicao)
 
         # opcional: foco no próximo campo sequencial (não no corrigido)
         if self.next_index < 46:
