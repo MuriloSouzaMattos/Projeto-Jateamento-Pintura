@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-EXPORT_DIR = Path(r"C:\Users\z0052dfz\OneDrive - Siemens Energy\BACKUP\Arquivos aleatórios\Jato")
+EXPORT_DIR = Path(r"\\ad101.siemens-energy.net\dfs\EnergyFS\LATAM\TICA_PRD\PRD\JAT\D4C\App_Elcometer_Exportacao")
 
 
 def posto_suffix(posto: str) -> str:

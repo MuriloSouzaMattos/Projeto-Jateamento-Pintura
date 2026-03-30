@@ -1,6 +1,10 @@
+import os
 import sys
 import re
 import asyncio
+
+base_dir = os.path.dirname(os.path.abspath(__file__))
+images_dir = os.path.join(base_dir, "Images")
 
 from ble import BleNotifier
 from PySide6.QtGui import QPixmap
@@ -36,12 +40,12 @@ RE_SERIE = re.compile(r"^\d{10}$")
 RE_PROJETO = re.compile(r"^[A-Z]{3}\d{4}$")
 
 IMAGE_PATHS = {
-    "Topo": r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Topo.png",
-    "Frente1": r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Frente 1.png",
-    "Frente2": r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Frente 2.png",
-    "Lateral1": r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Lateral 1.png",
-    "Lateral2": r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Lateral 2.png",
-    "Fundo": r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Fundo.png",
+    "Topo":     os.path.join(images_dir, "Topo.png"),
+    "Frente1":  os.path.join(images_dir, "Frente 1.png"),
+    "Frente2":  os.path.join(images_dir, "Frente 2.png"),
+    "Lateral1": os.path.join(images_dir, "Lateral 1.png"),
+    "Lateral2": os.path.join(images_dir, "Lateral 2.png"),
+    "Fundo":    os.path.join(images_dir, "Fundo.png"),
 }
 
 
@@ -53,12 +57,13 @@ POSTOS = [
 
 
 class OverviewPage(QWidget):
-    def __init__(self, repo: Repo, go_newedit, go_batch, go_history) -> None:
+    def __init__(self, repo: Repo, go_newedit, go_batch, go_history, set_ble_config=None) -> None:
         super().__init__()
         self.repo = repo
         self.go_newedit = go_newedit
         self.go_batch = go_batch
         self.go_history = go_history
+        self._set_ble_config_cb = set_ble_config  # callback do AppWindow
 
         self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels(["", "ID", "Data/Hora", "Operador", "Projeto", "Número de Série", "Posto"])
@@ -81,23 +86,28 @@ class OverviewPage(QWidget):
         # Botões
         self.btn_new = QPushButton("Cadastrar Medição")
         self.btn_batch = QPushButton("Exportar")
-        self.btn_delete = QPushButton("Excluir selecionada")
+        self.btn_edit = QPushButton("Editar")
+        self.btn_delete = QPushButton("Excluir")
         self.btn_history = QPushButton("Histórico")
         self.btn_refresh = QPushButton("Atualizar")
 
+        self.ble_mac = QLineEdit("24:5D:FC:00:B3:2E")
+        self.ble_uuid = QLineEdit("06d1e5e7-79ad-4a71-8faa-373789f7d93c")
+
+        self.btn_save_ble = QPushButton("Salvar BLE")
+        self.btn_save_ble.clicked.connect(self._save_ble)
+
+        ble_box = QGroupBox("Configuração BLE")
+        g = QGridLayout(ble_box)
+        g.addWidget(QLabel("MAC:"), 0, 0)
+        g.addWidget(self.ble_mac, 0, 1)
+        g.addWidget(QLabel("UUID:"), 1, 0)
+        g.addWidget(self.ble_uuid, 1, 1)
+        g.addWidget(self.btn_save_ble, 0, 2, 2, 1)
+
         # Estilos/tamanhos
-        self.btn_new.setMinimumHeight(48)
-        self.btn_new.setStyleSheet("""
-        QPushButton {
-            background-color: #1976d2;
-            color: white;
-            font-weight: bold;
-            font-size: 14px;
-            border-radius: 6px;
-            padding: 10px 14px;
-        }
-        QPushButton:hover { background-color: #1565c0; }
-        """)
+        self.btn_new.setProperty("primary", True)
+        self.btn_batch.setProperty("export", True)
 
         for b in (self.btn_batch, self.btn_delete, self.btn_history, self.btn_refresh):
             b.setMinimumHeight(40)
@@ -105,13 +115,14 @@ class OverviewPage(QWidget):
         # Sinais
         self.btn_new.clicked.connect(self._on_new)
         self.btn_batch.clicked.connect(self._on_batch)
+        self.btn_edit.clicked.connect(self._on_edit)
         self.btn_delete.clicked.connect(self._on_delete)
         self.btn_history.clicked.connect(self.go_history)
         self.btn_refresh.clicked.connect(self.refresh)
 
         # Header
         logo = QLabel()
-        pix = QPixmap(r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Siemens_Energy.png")  # ajuste o caminho
+        pix = QPixmap(os.path.join(images_dir, "Siemens_Energy.png"))
         logo.setPixmap(pix.scaledToHeight(28, Qt.SmoothTransformation))
 
         title = QLabel("Medições Pendentes")
@@ -128,6 +139,7 @@ class OverviewPage(QWidget):
         top.addStretch()
         top.addWidget(self.btn_new)
         top.addWidget(self.btn_batch)
+        top.addWidget(self.btn_edit)
         top.addWidget(self.btn_delete)
         top.addWidget(self.btn_history)
         top.addWidget(self.btn_refresh)
@@ -135,6 +147,7 @@ class OverviewPage(QWidget):
         layout = QVBoxLayout()
         layout.addLayout(top)
         layout.addWidget(self.table)
+        layout.addWidget(ble_box)  # agora fica abaixo da tabela
         self.setLayout(layout)
 
         self.refresh()
@@ -212,6 +225,34 @@ class OverviewPage(QWidget):
         self.repo.delete_measurement(id_)
         self.refresh()
 
+    def _save_ble(self) -> None:
+        mac = self.ble_mac.text().strip()
+        uuid = self.ble_uuid.text().strip()
+
+        if not mac or not uuid:
+            QMessageBox.warning(self, "Erro", "Preencha MAC e UUID.")
+            return
+
+        # chama o callback que o AppWindow passou
+        if self._set_ble_config_cb is not None:
+            self._set_ble_config_cb(mac, uuid)
+
+        QMessageBox.information(self, "OK", "Configuração BLE salva.")
+    
+    def _on_edit(self) -> None:
+        ids = self._selected_ids()
+        if len(ids) != 1:
+            QMessageBox.warning(self, "Erro", "Selecione exatamente 1 medição para editar.")
+            return
+
+        m_id = ids[0]
+        m = self.repo.get_by_ids([m_id])[0]
+
+        if not m:
+            QMessageBox.warning(self, "Erro", "Medição não encontrada.")
+            return
+
+        self.go_newedit(edit_id=m_id, measurement=m)
 
 class NewEditPage(QWidget):
     
@@ -221,6 +262,7 @@ class NewEditPage(QWidget):
         self.go_overview = go_overview
         self._posto = "FUNDO"
         self.setWindowTitle("Medição de Camada - BLE")
+        self._edit_id = None
 
         # BLE inputs (se quiser esconder depois, pode)
         self.address = QLineEdit("24:5D:FC:00:B3:2E")
@@ -293,6 +335,7 @@ class NewEditPage(QWidget):
             edit = QLineEdit()
             edit.setReadOnly(False)
             edit.setAlignment(Qt.AlignCenter)
+            edit.setMinimumHeight(32)  # evita corte de texto durante digitação
             edit.selectionChanged.connect(lambda i=i: self.set_override_index(i))
 
             self.measure_edits.append(edit)
@@ -309,12 +352,12 @@ class NewEditPage(QWidget):
         # ====== IMAGEM (lado direito) ======
 
         # caminhos das imagens
-        self.img_1_6 = r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Topo.png"
-        self.img_7_15 = r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Frente 1.png"
-        self.img_16_24 = r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Frente 2.png"
-        self.img_25_32 = r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Lateral 1.png"
-        self.img_33_40 = r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Lateral 2.png"
-        self.img_41_46 = r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\Fundo.png"
+        self.img_1_6   = os.path.join(images_dir, "Topo.png")
+        self.img_7_15  = os.path.join(images_dir, "Frente 1.png")
+        self.img_16_24 = os.path.join(images_dir, "Frente 2.png")
+        self.img_25_32 = os.path.join(images_dir, "Lateral 1.png")
+        self.img_33_40 = os.path.join(images_dir, "Lateral 2.png")
+        self.img_41_46 = os.path.join(images_dir, "Fundo.png")
 
         self._current_img_path = None
         self._original_pixmap = QPixmap()
@@ -325,13 +368,17 @@ class NewEditPage(QWidget):
         self.image_label.setScaledContents(False)
 
         # seta (overlay simples)
-        self.arrow_label = QLabel(self.image_label)  # filho do image_label (fica por cima)
+        self.arrow_label = QLabel(self.image_label)
         self.arrow_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
 
-        arrow_pix = QPixmap(r"C:\Users\z0052dfz\Projeto-Jateamento-Pintura\Images\seta verde.png")
+        arrow_pix = QPixmap(os.path.join(images_dir, "seta verde.png"))
         if not arrow_pix.isNull():
-            self.arrow_label.setPixmap(arrow_pix.scaledToWidth(45, Qt.SmoothTransformation))
-        self.arrow_label.hide()
+            self.arrow_label.setPixmap(
+                arrow_pix.scaledToWidth(45, Qt.SmoothTransformation)
+            )
+
+        self.arrow_label.move(50, 50)
+        self.arrow_label.show()
 
         # container do groupbox
         image_box = QGroupBox("Referência")
@@ -363,14 +410,6 @@ class NewEditPage(QWidget):
 
         header_box.setLayout(header_grid)
 
-        # ====== Layout BLE (pode remover depois) ======
-        ble_box = QGroupBox("Conexão BLE")
-        ble_grid = QGridLayout()
-        ble_grid.addWidget(QLabel("MAC:"), 0, 0)
-        ble_grid.addWidget(self.address, 0, 1)
-        ble_grid.addWidget(QLabel("UUID notify:"), 1, 0)
-        ble_grid.addWidget(self.uuid, 1, 1)
-        ble_box.setLayout(ble_grid)
 
         # ====== Botões ======
         buttons = QHBoxLayout()
@@ -384,7 +423,6 @@ class NewEditPage(QWidget):
         central_widget = QWidget()
         central_layout = QVBoxLayout(central_widget)
         central_layout.addWidget(header_box)
-        central_layout.addWidget(ble_box)
         central_layout.addLayout(buttons)
         central_layout.addLayout(measures_and_image)
         central_layout.addWidget(QLabel("Log:"))
@@ -394,6 +432,7 @@ class NewEditPage(QWidget):
         scroll_page = QScrollArea()
         scroll_page.setWidgetResizable(True)
         scroll_page.setWidget(central_widget)
+        self.scroll_page = scroll_page
 
         # ====== Layout principal ======
         layout = QVBoxLayout()
@@ -503,6 +542,15 @@ class NewEditPage(QWidget):
         if txt == "Jateamento":
             return "JAT"
         return None
+    
+    def posto_code_to_text(self, code: str) -> str:
+        if code == "FUNDO":
+            return "Pintura - Fundo"
+        if code == "ACAB":
+            return "Pintura - Acabamento"
+        if code == "JAT":
+            return "Jateamento"
+        return ""
 
     def clear_selected_measurement(self) -> None:
         if self.override_index is None:
@@ -613,13 +661,27 @@ class NewEditPage(QWidget):
             QMessageBox.warning(self, "Erro", "Esperado 46 medições.")
             return
 
-        self.repo.create_pending(
-            posto=posto_code,
-            operador=operador,
-            values=values,
-            projeto=projeto,
-            serie=serie,
-        )
+        if self._edit_id is None:
+            # Criar nova
+            self.repo.create_pending(
+                posto=posto_code,
+                operador=operador,
+                values=values,
+                projeto=projeto,
+                serie=serie,
+            )
+        else:
+            # Atualizar existente
+            self.repo.update_measurement(
+                id=self._edit_id,
+                posto=posto_code,
+                operador=operador,
+                projeto=projeto,
+                serie=serie,
+                values=values,
+            )
+            QMessageBox.information(self, "OK", "Medição atualizada.")
+            self._edit_id = None
 
         QMessageBox.information(self, "OK", "Medição salva.")
         self.clear_measurements()
@@ -650,13 +712,27 @@ class NewEditPage(QWidget):
         projeto = self.projeto.text().strip() or None
         serie = self.serie.text().strip() or None
 
-        self.repo.create_pending(
-            posto=posto_code,
-            operador=operador,
-            values=values,
-            projeto=projeto,
-            serie=serie,
-        )
+        if self._edit_id is None:
+            # Criar nova
+            self.repo.create_pending(
+                posto=posto_code,
+                operador=operador,
+                values=values,
+                projeto=projeto,
+                serie=serie,
+            )
+        else:
+            # Atualizar existente
+            self.repo.update_measurement(
+                id=self._edit_id,
+                posto=posto_code,
+                operador=operador,
+                projeto=projeto,
+                serie=serie,
+                values=values,
+            )
+            QMessageBox.information(self, "OK", "Medição atualizada.")
+            self._edit_id = None
 
     def go_back(self) -> None:
         has_any = (
@@ -674,6 +750,7 @@ class NewEditPage(QWidget):
         self.go_overview()
 
     def reset_form(self) -> None:
+        self._edit_id = None
         # limpa medições (46 campos + índices + imagem)
         self.clear_measurements()
 
@@ -806,6 +883,9 @@ class NewEditPage(QWidget):
 
         # scroll até o campo preenchido
         self.scroll_measures.ensureWidgetVisible(edit_atual)
+        
+        # Também rolar a área principal da página para mostrar a medição atual
+        self.scroll_page.ensureWidgetVisible(edit_atual)
 
         # Se acabamos de preencher a última medição (sequencial), finaliza
         if (not was_override) and idx == 45:
@@ -823,11 +903,40 @@ class NewEditPage(QWidget):
             prox.setFocus()
             self.scroll_measures.ensureWidgetVisible(prox)
 
+            # Rola também a página inteira para o próximo campo
+            parent_scroll = self.parentWidget()
+            while parent_scroll and not isinstance(parent_scroll, QScrollArea):
+                parent_scroll = parent_scroll.parentWidget()
+
+            if isinstance(parent_scroll, QScrollArea):
+                parent_scroll.ensureWidgetVisible(prox)
+
+
     def set_posto(self, posto: str) -> None:
         self._posto = posto
         self.lbl_posto.setText(posto)
         self.update_image_for_measure(1)  # opcional, mas recomendado
 
+    def set_ble_config(self, mac: str, uuid: str) -> None:
+        self.address.setText(mac)
+        self.uuid.setText(uuid)
+
+    def load_for_edit(self, edit_id, m):
+        self._edit_id = edit_id
+
+        # Preenche o cabeçalho
+        self.posto.setCurrentText(self.posto_code_to_text(m.posto))
+        self.operador.setText(m.operador)
+        if hasattr(self, "projeto"):
+            self.projeto.setText(m.projeto or "")
+        self.serie.setText(m.serie or "")
+
+        # Preencher as 46 medições
+        for i, value in enumerate(m.values):
+            if i < len(self.measure_edits):
+                self.measure_edits[i].setText(value)
+
+        self.next_index = 46  # evita continuar preenchendo
 
 class BatchExportPage(QWidget):
     def __init__(self, repo: Repo, go_overview, go_history) -> None:
@@ -850,6 +959,8 @@ class BatchExportPage(QWidget):
         self.btn_apply_project.clicked.connect(self._apply_project_all)
         self.btn_export.clicked.connect(self._export)
         self.btn_back.clicked.connect(self.go_overview)
+
+        self.btn_export.setProperty("export", True)
 
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["ID", "Projeto", "Número de Série"])
@@ -945,7 +1056,6 @@ class BatchExportPage(QWidget):
         QMessageBox.information(self, "OK", "Arquivos exportados e enviados ao histórico.")
         self.go_history()
 
-
 class HistoryPage(QWidget):
     def __init__(self, repo: Repo, go_overview) -> None:
         super().__init__()
@@ -987,21 +1097,25 @@ class HistoryPage(QWidget):
             self.table.setItem(r, 4, QTableWidgetItem(m.serie or ""))
             self.table.setItem(r, 5, QTableWidgetItem(m.operador))
 
-
 class AppWindow(QStackedWidget):
     def __init__(self) -> None:
         super().__init__()
         self.repo = Repo("medicoes.db")
+        self.ble_mac = "24:5D:FC:00:B3:2E"
+        self.ble_uuid = "06d1e5e7-79ad-4a71-8faa-373789f7d93c"
 
         self.overview = OverviewPage(
             repo=self.repo,
             go_newedit=self.show_newedit,
             go_batch=self.show_batch,
             go_history=self.show_history,
-        )
+            set_ble_config=self.set_ble_config
+            )
+        
         self.newedit = NewEditPage(repo=self.repo, go_overview=self.show_overview)
         self.batch = BatchExportPage(repo=self.repo, go_overview=self.show_overview, go_history=self.show_history)
         self.history = HistoryPage(repo=self.repo, go_overview=self.show_overview)
+        
 
         self.addWidget(self.overview)
         self.addWidget(self.newedit)
@@ -1016,10 +1130,13 @@ class AppWindow(QStackedWidget):
         self.overview.refresh()
         self.setCurrentWidget(self.overview)
 
-    def show_newedit(self) -> None:
-        # opcional: resetar a tela antes de abrir
-        if hasattr(self.newedit, "reset_form"):
+    def show_newedit(self, edit_id=None, measurement=None):
+        if edit_id is not None:
+            self.newedit.load_for_edit(edit_id, measurement)
+        else:
             self.newedit.reset_form()
+
+        self.newedit.set_ble_config(self.ble_mac, self.ble_uuid)
         self.setCurrentWidget(self.newedit)
 
     def show_batch(self, ids: list[int]) -> None:
@@ -1030,14 +1147,130 @@ class AppWindow(QStackedWidget):
         self.history.refresh()
         self.setCurrentWidget(self.history)
 
+    def set_ble_config(self, mac: str, uuid: str) -> None:
+        self.ble_mac = mac
+        self.ble_uuid = uuid
+
 
 def main() -> None:
     app = QApplication(sys.argv)
+    
     app.setStyleSheet("""
+    /* Fonte geral */
+    * {
+        font-family: "Segoe UI";
+        font-size: 10.5pt;
+    }
+
+    /* Janela */
+    QWidget {
+        background: #f5f6f8;
+        color: #1f2937;
+    }
+
+    /* GroupBox (cards) */
+    QGroupBox {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        margin-top: 12px;
+        padding: 10px;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        left: 12px;
+        padding: 0 6px;
+        color: #111827;
+        font-weight: 600;
+    }
+
+    /* Inputs */
+    QLineEdit, QComboBox {
+        background: #ffffff;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 4px 10px;
+        min-height: 28px;
+    }
+    QLineEdit:focus, QComboBox:focus {
+        border: 1px solid #3b82f6;
+    }
+
+    /* Botões */
+    QPushButton {
+        background: #ffffff;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 9px 14px;
+        font-weight: 600;
+    }
+    QPushButton:hover {
+        background: #f3f4f6;
+    }
+    QPushButton:pressed {
+        background: #e5e7eb;
+    }
+    QPushButton:disabled {
+        background: #f3f4f6;
+        color: #9ca3af;
+        border-color: #e5e7eb;
+    }
+
+    /* Botão “primário” (use property) */
+    QPushButton[primary="true"] {
+        background: #2563eb;
+        color: white;
+        border: 1px solid #2563eb;
+    }
+    QPushButton[primary="true"]:hover { background: #1d4ed8; }
+
+    /* Tabelas */
+    QTableWidget {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        gridline-color: #eef2f7;
+    }
+    QHeaderView::section {
+        background: #f9fafb;
+        color: #111827;
+        padding: 8px;
+        border: none;
+        border-bottom: 1px solid #e5e7eb;
+        font-weight: 700;
+    }
+    QTableWidget::item {
+        padding: 6px;
+    }
+    QTableWidget::item:selected {
+        background-color: #cfe8ff;
+        color: #000000;
+    }
+
+    /* Scrollbar (neutro) */
+    QScrollBar:vertical {
+        background: transparent;
+        width: 12px;
+        margin: 0px;
+    }
+    QScrollBar::handle:vertical {
+        background: #cbd5e1;
+        border-radius: 6px;
+        min-height: 30px;
+    }
+    QScrollBar::handle:vertical:hover { background: #94a3b8; }
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
     QTableWidget::item:selected {
         background-color: #cfe8ff;  /* azul claro */
         color: #000000;
     }
+                      
+    QPushButton[export="true"] {
+        background: #16a34a;   /* verde */
+        color: white;
+        border: 1px solid #16a34a;
+    }
+    QPushButton[export="true"]:hover { background: #15803d; }
     """)
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)

@@ -151,3 +151,19 @@ class Repo:
                 """
             ).fetchall()
         return [self._row_to_measurement(r) for r in rows]
+    
+    def update_measurement(self, id, posto, operador, projeto, serie, values):
+        assert len(values) == 46
+
+        cols = [f"m{i:02d}" for i in range(1, 47)]
+        set_clause = ", ".join([f"{c}=?" for c in cols])
+
+        with self._connect() as con:
+            con.execute(
+                f"""
+                UPDATE measurements
+                SET posto=?, operador=?, projeto=?, serie=?, {set_clause}
+                WHERE id=?
+                """,
+                [posto, operador, projeto, serie, *values, id],
+            )
