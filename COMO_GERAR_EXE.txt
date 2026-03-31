@@ -1,0 +1,59 @@
+# Como gerar o executável MedicaoCamadas.exe
+# =============================================
+
+## 1. Pré-requisitos (rode no terminal, uma vez)
+
+pip install pyinstaller
+pip install PySide6 qasync bleak openpyxl
+
+
+## 2. Estrutura esperada da pasta do projeto
+
+Projeto-Jateamento-Pintura\
+├── main.py               ← (o arquivo atualizado)
+├── ble.py
+├── repo.py
+├── exporter.py
+├── MedicaoCamadas.spec   ← (arquivo gerado)
+├── hook_base_dir.py      ← (arquivo gerado)
+└── Images\
+    ├── Topo.png
+    ├── Frente 1.png
+    ├── Frente 2.png
+    ├── Lateral 1.png
+    ├── Lateral 2.png
+    ├── Fundo.png
+    ├── seta verde.png
+    └── Siemens_Energy.png
+
+
+## 3. Gerar o executável
+
+Abra o terminal na pasta do projeto e rode:
+
+    pyinstaller MedicaoCamadas.spec
+
+O processo leva alguns minutos. O .exe ficará em:
+
+    dist\MedicaoCamadas.exe
+
+
+## 4. Distribuir
+
+Basta copiar o arquivo dist\MedicaoCamadas.exe para outro computador.
+Não precisa instalar Python nem nenhuma biblioteca.
+
+O banco de dados (medicoes.db) será criado automaticamente na mesma
+pasta onde o .exe estiver, na primeira execução.
+
+
+## 5. Se der erro na hora de rodar
+
+Rode com console=True no .spec (linha ~44) para ver o erro:
+    console=True
+
+Erros comuns:
+- "No module named 'bleak.backends.winrt'": adicione mais entradas
+  em hiddenimports no .spec (bleak usa imports dinâmicos no Windows).
+- Imagem não encontrada: verifique se a pasta Images está junto do .exe
+  ou se o caminho em datas[] no .spec está correto.

@@ -3,12 +3,16 @@ import sys
 import re
 import asyncio
 
-base_dir = os.path.dirname(os.path.abspath(__file__))
+# Quando empacotado com PyInstaller, os arquivos ficam em sys._MEIPASS
+if getattr(sys, 'frozen', False):
+    base_dir = sys._MEIPASS
+else:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
 images_dir = os.path.join(base_dir, "Images")
 
 from ble import BleNotifier
 from PySide6.QtGui import QPixmap
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt,QPropertyAnimation, QEasingCurve
 from PySide6.QtWidgets import (
     QComboBox,
     QTextEdit,
@@ -27,6 +31,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QLineEdit,
+    QGraphicsOpacityEffect
 )
 
 from qasync import QEventLoop, asyncSlot
@@ -368,69 +373,69 @@ class NewEditPage(QWidget):
         self.image_label.setScaledContents(False)
 
         self.arrow_positions = {
-            
+
             "Topo": {
-                1: (220, 440),
-                2: (270, 400),
-                3: (270, 480),
-                4: (310, 440),
-                5: (330, 540),
-                6: (380, 500),
+                1: (214, 446),
+                2: (258, 391),
+                3: (268, 490),
+                4: (311, 446),
+                5: (323, 545),
+                6: (386, 505),
             },
 
             "Frente1": {
-                7: (205, 355),
-                8: (250, 390),
-                9: (310, 415),
-                10: (225, 500),
-                11: (260, 530),
-                12: (310, 570),
-                13: (225, 630),
-                14: (260, 665),
-                15: (310, 700),
+                7:  (201, 355),
+                8:  (239, 391),
+                9:  (304, 416),
+                10: (222, 498),
+                11: (254, 538),
+                12: (304, 572),
+                13: (220, 625),
+                14: (258, 665),
+                15: (304, 703),
             },
 
             "Frente2": {
-                16: (225, 350),
-                17: (265, 380),
-                18: (330, 410),
-                19: (245, 490),
-                20: (280, 530),
-                21: (325, 565),
-                22: (240, 625),
-                23: (280, 660),
-                24: (325, 695),
+                16: (220, 351),
+                17: (258, 388),
+                18: (319, 410),
+                19: (239, 492),
+                20: (270, 532),
+                21: (319, 568),
+                22: (235, 627),
+                23: (270, 661),
+                24: (323, 698),
             },
 
             "Lateral1": {
-                25: (275, 180),
-                26: (330, 145),
-                27: (270, 360),
-                28: (325, 320),
-                29: (275, 445),
-                30: (325, 410),
-                31: (275, 630),
-                32: (325, 590),
+                25: (282, 187),
+                26: (335, 145),
+                27: (269, 354),
+                28: (326, 320),
+                29: (269, 446),
+                30: (333, 412),
+                31: (270, 627),
+                32: (332, 591),
             },
 
             "Lateral2": {
-                33: (240, 180),
-                34: (290, 145),
-                35: (235, 360),
-                36: (290, 320),
-                37: (235, 445),
-                38: (290, 410),
-                39: (230, 630),
-                40: (290, 590),
+                33: (240, 185),
+                34: (290, 152),
+                35: (236, 356),
+                36: (291, 320),
+                37: (234, 444),
+                38: (291, 406),
+                39: (236, 624),
+                40: (286, 593),
             },
 
             "Fundo": {
-                41: (225, 410),
-                42: (275, 360),
-                43: (275, 490),
-                44: (320, 430),
-                45: (315, 545),
-                46: (365, 490),
+                41: (223, 416),
+                42: (280, 349),
+                43: (269, 480),
+                44: (322, 419),
+                45: (312, 547),
+                46: (368, 480),
             }
         }
 
@@ -445,7 +450,23 @@ class NewEditPage(QWidget):
                 arrow_pix.scaledToWidth(45, Qt.SmoothTransformation)
             )
 
-        self.move_arrow_to_measure(1)
+        self.offset_correction_x = -20    # ajuste horizontal
+        self.offset_correction_y = -44    # ajuste vertical
+
+        # Efeito de opacidade
+        self.arrow_opacity = QGraphicsOpacityEffect(self.arrow_label)
+        self.arrow_label.setGraphicsEffect(self.arrow_opacity)
+        self.arrow_opacity.setOpacity(1.0)
+
+        # Animação de fade in/out
+        self.arrow_anim = QPropertyAnimation(self.arrow_opacity, b"opacity")
+        self.arrow_anim.setDuration(900)         # 0.9s para piscar
+        self.arrow_anim.setStartValue(1.0)       # totalmente visível
+        self.arrow_anim.setEndValue(0.2)         # quase transparente
+        self.arrow_anim.setEasingCurve(QEasingCurve.InOutQuad)
+        self.arrow_anim.setLoopCount(-1)         # repete para sempre
+        self.arrow_anim.start()
+
 
         # container do groupbox
         image_box = QGroupBox("Referência")
@@ -453,6 +474,7 @@ class NewEditPage(QWidget):
         image_layout.addWidget(self.image_label)
 
         self.update_image_for_measure(1)
+        self.move_arrow_to_measure(1)
 
         # Medições + imagem lado a lado
         measures_and_image = QHBoxLayout()
@@ -559,36 +581,59 @@ class NewEditPage(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._apply_scaled_pixmap()
+        current = self.override_index if self.override_index is not None else self.next_index
+        self.move_arrow_to_measure(current + 1)
 
     def set_arrow_pos(self, x: int, y: int) -> None:
         # x,y são pixels
-        self.arrow_label.move(x, y)
-        self.arrow_label.show()
+        pix = self.arrow_label.pixmap()
+        if pix:
+            w = pix.width()
+            h = pix.height()
+            offset_x = w // 2
+            offset_y = h  # ponta inferior da seta
+
+            self.arrow_label.move(x - offset_x, y - offset_y)
+            self.arrow_label.show()
+            self.arrow_anim.stop()
+            self.arrow_anim.start()
+
     
     def move_arrow_to_measure(self, measure_number):
         for image_name, measures in self.arrow_positions.items():
             if measure_number in measures:
+                x_orig, y_orig = measures[measure_number]
 
-                x, y = measures[measure_number]
+                orig_w = self._original_pixmap.width() if not self._original_pixmap.isNull() else 0
+                orig_h = self._original_pixmap.height() if not self._original_pixmap.isNull() else 0
+                label_w = self.image_label.width()
+                label_h = self.image_label.height()
 
-                pixmap = self.image_label.pixmap()
+                if orig_w > 0 and orig_h > 0 and label_w > 10 and label_h > 10:
+                    scale = min(label_w / orig_w, label_h / orig_h)
+                    scaled_w = int(orig_w * scale)
+                    scaled_h = int(orig_h * scale)
+                    offset_x = (label_w - scaled_w) // 2
+                    offset_y = (label_h - scaled_h) // 2
+                    x = offset_x + int(x_orig * scale)
+                    y = offset_y + int(y_orig * scale)
 
-                if pixmap:
+                    x += self.offset_correction_x
+                    y += self.offset_correction_y
 
-                    label_w = self.image_label.width()
-                    label_h = self.image_label.height()
-
-                    img_w = pixmap.width()
-                    img_h = pixmap.height()
-
-                    scale_x = label_w / img_w
-                    scale_y = label_h / img_h
-
-                    x = int(x * scale_x)
-                    y = int(y * scale_y)
+                    self.append_log(
+                        f"[DEBUG] m={measure_number} orig={orig_w}x{orig_h} "
+                        f"label={label_w}x{label_h} scale={scale:.3f} "
+                        f"scaled={scaled_w}x{scaled_h} offset=({offset_x},{offset_y}) "
+                        f"seta=({x},{y})"
+                    )
+                else:
+                    x, y = x_orig, y_orig
 
                 self.arrow_label.move(x, y)
                 self.arrow_label.show()
+                self.arrow_anim.stop()
+                self.arrow_anim.start()
 
                 break
 
