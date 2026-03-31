@@ -3,11 +3,7 @@ import sys
 import re
 import asyncio
 
-# Quando empacotado com PyInstaller, os arquivos ficam em sys._MEIPASS
-if getattr(sys, 'frozen', False):
-    base_dir = sys._MEIPASS
-else:
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+base_dir = os.path.dirname(os.path.abspath(__file__))
 images_dir = os.path.join(base_dir, "Images")
 
 from ble import BleNotifier
@@ -93,6 +89,7 @@ class OverviewPage(QWidget):
         self.btn_batch = QPushButton("Exportar")
         self.btn_edit = QPushButton("Editar")
         self.btn_delete = QPushButton("Excluir")
+        self.btn_delete.setProperty("danger", True)
         self.btn_history = QPushButton("Histórico")
         self.btn_refresh = QPushButton("Atualizar")
 
@@ -114,8 +111,7 @@ class OverviewPage(QWidget):
         self.btn_new.setProperty("primary", True)
         self.btn_batch.setProperty("export", True)
 
-        for b in (self.btn_batch, self.btn_delete, self.btn_history, self.btn_refresh):
-            b.setMinimumHeight(40)
+
 
         # Sinais
         self.btn_new.clicked.connect(self._on_new)
@@ -140,6 +136,7 @@ class OverviewPage(QWidget):
         title_box.addStretch()
 
         top = QHBoxLayout()
+        top.setSpacing(8)
         top.addLayout(title_box)
         top.addStretch()
         top.addWidget(self.btn_new)
@@ -150,9 +147,11 @@ class OverviewPage(QWidget):
         top.addWidget(self.btn_refresh)
 
         layout = QVBoxLayout()
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(12)
         layout.addLayout(top)
         layout.addWidget(self.table)
-        layout.addWidget(ble_box)  # agora fica abaixo da tabela
+        layout.addWidget(ble_box)
         self.setLayout(layout)
 
         self.refresh()
@@ -295,31 +294,9 @@ class NewEditPage(QWidget):
         self.btn_clear_one = QPushButton("Limpar medição selecionada")
         self.btn_clear_all = QPushButton("Limpar medições")
 
-        self.btn_start.setStyleSheet("""
-        QPushButton {
-            background-color: #2e7d32;   /* verde */
-            color: white;
-            font-weight: bold;
-            padding: 6px 10px;
-        }
-        QPushButton:disabled {
-            background-color: #9e9e9e;   /* cinza quando desabilitado */
-            color: #eeeeee;
-        }
-        """)
+        self.btn_start.setProperty("primary", True)
 
-        self.btn_stop.setStyleSheet("""
-        QPushButton {
-            background-color: #c62828;   /* vermelho */
-            color: white;
-            font-weight: bold;
-            padding: 6px 10px;
-        }
-        QPushButton:disabled {
-            background-color: #9e9e9e;
-            color: #eeeeee;
-        }
-        """)
+        self.btn_stop.setProperty("danger", True)
 
 
         # Log (opcional)
@@ -653,7 +630,7 @@ class NewEditPage(QWidget):
 
         # destaca o campo selecionado
         for j, e in enumerate(self.measure_edits):
-            e.setStyleSheet("" if j != index else "border: 2px solid #1976d2;")
+            e.setStyleSheet("" if j != index else "border: 2px solid #0ea5e9; background-color: #1e3a5f;")
 
         self.update_image_for_measure(index + 1)
         self.move_arrow_to_measure(index + 1)
@@ -1281,121 +1258,264 @@ def main() -> None:
     app = QApplication(sys.argv)
     
     app.setStyleSheet("""
-    /* Fonte geral */
+    /* ── BASE ─────────────────────────────────────────────────────── */
     * {
-        font-family: "Segoe UI";
-        font-size: 10.5pt;
+        font-family: "Segoe UI", "Arial", sans-serif;
+        font-size: 10pt;
+        color: #e2e8f0;
     }
 
-    /* Janela */
     QWidget {
-        background: #f5f6f8;
-        color: #1f2937;
+        background-color: #0f172a;
     }
 
-    /* GroupBox (cards) */
+    QStackedWidget {
+        background-color: #0f172a;
+    }
+
+    /* ── TOPBAR / TOOLBAR AREA ─────────────────────────────────────── */
+    QWidget#topbar {
+        background-color: #1e293b;
+        border-bottom: 1px solid #334155;
+    }
+
+    /* ── GROUP BOX ─────────────────────────────────────────────────── */
     QGroupBox {
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 10px;
-        margin-top: 12px;
-        padding: 10px;
+        background-color: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        margin-top: 18px;
+        padding: 12px 10px 10px 10px;
     }
     QGroupBox::title {
         subcontrol-origin: margin;
+        subcontrol-position: top left;
         left: 12px;
+        top: 2px;
         padding: 0 6px;
-        color: #111827;
+        color: #94a3b8;
+        font-size: 8.5pt;
         font-weight: 600;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
     }
 
-    /* Inputs */
-    QLineEdit, QComboBox {
-        background: #ffffff;
-        border: 1px solid #d1d5db;
-        border-radius: 8px;
-        padding: 4px 10px;
+    /* ── INPUTS ────────────────────────────────────────────────────── */
+    QLineEdit, QComboBox, QTextEdit {
+        background-color: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 5px 10px;
         min-height: 28px;
+        color: #e2e8f0;
+        selection-background-color: #0ea5e9;
+        selection-color: #ffffff;
     }
-    QLineEdit:focus, QComboBox:focus {
-        border: 1px solid #3b82f6;
+    QLineEdit:focus, QComboBox:focus, QTextEdit:focus {
+        border: 1px solid #0ea5e9;
+        background-color: #1e293b;
+    }
+    QLineEdit:disabled, QComboBox:disabled {
+        background-color: #1e293b;
+        color: #475569;
+        border-color: #1e293b;
+    }
+    QLineEdit[readOnly="true"] {
+        background-color: #1e293b;
+        color: #94a3b8;
     }
 
-    /* Botões */
+    QComboBox::drop-down {
+        border: none;
+        width: 24px;
+    }
+    QComboBox::down-arrow {
+        width: 10px;
+        height: 10px;
+        border-left:  2px solid #64748b;
+        border-bottom: 2px solid #64748b;
+        margin-right: 6px;
+        /* simple CSS chevron via rotation trick */
+    }
+    QComboBox QAbstractItemView {
+        background-color: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        selection-background-color: #0ea5e9;
+        selection-color: #ffffff;
+        outline: none;
+    }
+
+    /* ── LABELS ────────────────────────────────────────────────────── */
+    QLabel {
+        background: transparent;
+        color: #cbd5e1;
+    }
+
+    /* ── BUTTONS — default ─────────────────────────────────────────── */
     QPushButton {
-        background: #ffffff;
-        border: 1px solid #d1d5db;
-        border-radius: 8px;
-        padding: 9px 14px;
+        background-color: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 7px 16px;
         font-weight: 600;
+        font-size: 9.5pt;
+        color: #cbd5e1;
+        min-height: 32px;
     }
     QPushButton:hover {
-        background: #f3f4f6;
+        background-color: #334155;
+        border-color: #475569;
+        color: #f1f5f9;
     }
     QPushButton:pressed {
-        background: #e5e7eb;
+        background-color: #0f172a;
+        border-color: #0ea5e9;
     }
     QPushButton:disabled {
-        background: #f3f4f6;
-        color: #9ca3af;
-        border-color: #e5e7eb;
+        background-color: #1e293b;
+        color: #334155;
+        border-color: #1e293b;
     }
 
-    /* Botão “primário” (use property) */
+    /* ── BUTTON — primary (Cadastrar / Conectar) ───────────────────── */
     QPushButton[primary="true"] {
-        background: #2563eb;
-        color: white;
-        border: 1px solid #2563eb;
+        background-color: #0ea5e9;
+        border: 1px solid #0ea5e9;
+        color: #ffffff;
     }
-    QPushButton[primary="true"]:hover { background: #1d4ed8; }
+    QPushButton[primary="true"]:hover  { background-color: #38bdf8; border-color: #38bdf8; }
+    QPushButton[primary="true"]:pressed { background-color: #0284c7; }
+    QPushButton[primary="true"]:disabled {
+        background-color: #0c4a6e;
+        border-color: #0c4a6e;
+        color: #475569;
+    }
 
-    /* Tabelas */
-    QTableWidget {
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 10px;
-        gridline-color: #eef2f7;
+    /* ── BUTTON — export / green ───────────────────────────────────── */
+    QPushButton[export="true"] {
+        background-color: #059669;
+        border: 1px solid #059669;
+        color: #ffffff;
     }
-    QHeaderView::section {
-        background: #f9fafb;
-        color: #111827;
-        padding: 8px;
-        border: none;
-        border-bottom: 1px solid #e5e7eb;
-        font-weight: 700;
+    QPushButton[export="true"]:hover  { background-color: #10b981; border-color: #10b981; }
+    QPushButton[export="true"]:pressed { background-color: #047857; }
+
+    /* ── BUTTON — danger (Excluir / Parar) ────────────────────────── */
+    QPushButton[danger="true"] {
+        background-color: #dc2626;
+        border: 1px solid #dc2626;
+        color: #ffffff;
+    }
+    QPushButton[danger="true"]:hover  { background-color: #ef4444; border-color: #ef4444; }
+    QPushButton[danger="true"]:pressed { background-color: #b91c1c; }
+    QPushButton[danger="true"]:disabled {
+        background-color: #1e293b;
+        border-color: #1e293b;
+        color: #475569;
+    }
+
+    /* ── TABLE ─────────────────────────────────────────────────────── */
+    QTableWidget {
+        background-color: #1e293b;
+        alternate-background-color: #162032;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        gridline-color: #334155;
+        outline: none;
     }
     QTableWidget::item {
-        padding: 6px;
+        padding: 8px 10px;
+        border: none;
+        color: #cbd5e1;
     }
     QTableWidget::item:selected {
-        background-color: #cfe8ff;
-        color: #000000;
+        background-color: #0c4a6e;
+        color: #f0f9ff;
+    }
+    QTableWidget::item:hover {
+        background-color: #1e3a5f;
+    }
+    QHeaderView::section {
+        background-color: #0f172a;
+        color: #64748b;
+        font-size: 8.5pt;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        padding: 9px 10px;
+        border: none;
+        border-bottom: 2px solid #334155;
+        border-right: 1px solid #1e293b;
+        text-transform: uppercase;
+    }
+    QHeaderView::section:last { border-right: none; }
+    QTableCornerButton::section {
+        background-color: #0f172a;
+        border: none;
     }
 
-    /* Scrollbar (neutro) */
+    /* ── SCROLLBAR ─────────────────────────────────────────────────── */
     QScrollBar:vertical {
         background: transparent;
-        width: 12px;
-        margin: 0px;
+        width: 8px;
+        margin: 0;
     }
     QScrollBar::handle:vertical {
-        background: #cbd5e1;
-        border-radius: 6px;
-        min-height: 30px;
+        background: #334155;
+        border-radius: 4px;
+        min-height: 24px;
     }
-    QScrollBar::handle:vertical:hover { background: #94a3b8; }
-    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
-    QTableWidget::item:selected {
-        background-color: #cfe8ff;  /* azul claro */
-        color: #000000;
+    QScrollBar::handle:vertical:hover  { background: #475569; }
+    QScrollBar::add-line:vertical,
+    QScrollBar::sub-line:vertical      { height: 0; }
+
+    QScrollBar:horizontal {
+        background: transparent;
+        height: 8px;
+        margin: 0;
     }
-                      
-    QPushButton[export="true"] {
-        background: #16a34a;   /* verde */
-        color: white;
-        border: 1px solid #16a34a;
+    QScrollBar::handle:horizontal {
+        background: #334155;
+        border-radius: 4px;
+        min-width: 24px;
     }
-    QPushButton[export="true"]:hover { background: #15803d; }
+    QScrollBar::handle:horizontal:hover { background: #475569; }
+    QScrollBar::add-line:horizontal,
+    QScrollBar::sub-line:horizontal     { width: 0; }
+
+    QScrollArea {
+        background-color: transparent;
+        border: none;
+    }
+
+    /* ── CHECKBOX ──────────────────────────────────────────────────── */
+    QCheckBox {
+        spacing: 6px;
+        color: #94a3b8;
+    }
+    QCheckBox::indicator {
+        width: 16px;
+        height: 16px;
+        border: 1px solid #475569;
+        border-radius: 4px;
+        background: #0f172a;
+    }
+    QCheckBox::indicator:checked {
+        background: #0ea5e9;
+        border-color: #0ea5e9;
+    }
+    QCheckBox::indicator:hover {
+        border-color: #0ea5e9;
+    }
+
+    /* ── MESSAGE BOX ───────────────────────────────────────────────── */
+    QMessageBox {
+        background-color: #1e293b;
+    }
+    QMessageBox QLabel {
+        color: #e2e8f0;
+        font-size: 10pt;
+    }
     """)
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
