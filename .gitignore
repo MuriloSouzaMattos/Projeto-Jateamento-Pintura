@@ -1,0 +1,19 @@
+# Ambiente virtual
+venv/
+.env/
+
+# Python
+__pycache__/
+*.pyc
+
+# Build
+build/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Windows
+*.dll
+*.exe
