@@ -35,6 +35,7 @@ Projeto-Jateamento-Pintura/
 ├── repo.py                 # Acesso ao banco de dados SQLite
 ├── exporter.py             # Exportação para Excel (openpyxl)
 ├── MedicaoCamadas.spec     # Configuração do PyInstaller
+├── requirements.txt        # Dependências do projeto
 ├── Images/
 │   ├── Topo.png
 │   ├── Frente 1.png
@@ -44,8 +45,6 @@ Projeto-Jateamento-Pintura/
 │   ├── Fundo.png
 │   ├── seta verde.png
 │   └── Siemens_Energy.png
-└── dist/
-    └── MedicaoCamadas.exe  # Executável gerado
 ```
 
 O banco de dados `medicoes.db` é criado automaticamente na mesma pasta do executável na primeira execução.
@@ -58,7 +57,7 @@ O banco de dados `medicoes.db` é criado automaticamente na mesma pasta do execu
 - Dependências:
 
 ```
-pip install PySide6 qasync bleak openpyxl pyinstaller
+pip install -r requirements.txt
 ```
 
 ---
