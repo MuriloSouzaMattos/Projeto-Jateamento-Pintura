@@ -37,6 +37,7 @@ def export_measurement_to_excel(
     serie: str,
     projeto: str,
     operador: str,
+    varal: str,
     posto: str,
     created_at: str,
     values: list[str],  # 46
@@ -53,6 +54,7 @@ def export_measurement_to_excel(
         "Projeto": projeto,
         "Número de Série": serie,
         "Operador": operador,
+        "Varal": varal,
         "Posto": posto,
     }
     for i in range(46):

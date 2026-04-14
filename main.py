@@ -40,6 +40,7 @@ _RX = re.compile(r"([+-]?\d+(?:[.,]\d+)?)\s*(?:u[mM]|µm)\b")
 RE_OPERADOR = re.compile(r"^Z\d{3}[A-Z0-9]{4}$")
 RE_SERIE = re.compile(r"^\d{10}$")
 RE_PROJETO = re.compile(r"^[A-Z]{3}\d{4}$")
+RE_VARAL = re.compile(r"^\d+$")  # somente números
 
 IMAGE_PATHS = {
     "Topo":     os.path.join(images_dir, "Topo.png"),
@@ -77,8 +78,8 @@ class OverviewPage(QWidget):
         self.go_history = go_history
         self._set_ble_config_cb = set_ble_config  # callback do AppWindow
 
-        self.table = QTableWidget(0, 7)
-        self.table.setHorizontalHeaderLabels(["", "ID", "Data/Hora", "Operador", "Projeto", "Número de Série", "Posto"])
+        self.table = QTableWidget(0, 8)
+        self.table.setHorizontalHeaderLabels(["", "ID", "Data/Hora", "Operador", "Varal", "Projeto", "Número de Série", "Posto"])
         self.table.setColumnWidth(0, 30)
         self.table.setColumnHidden(1, True)
         self.table.horizontalHeader().setStretchLastSection(True)
@@ -146,10 +147,14 @@ class OverviewPage(QWidget):
         title_box.addWidget(title)
         title_box.addStretch()
 
+        self.btn_theme = QPushButton("☀️ Tema Claro")
+        self.btn_theme.setToolTip("Alternar entre tema escuro e claro")
+
         top = QHBoxLayout()
         top.setSpacing(8)
         top.addLayout(title_box)
         top.addStretch()
+        top.addWidget(self.btn_theme)
         top.addWidget(self.btn_new)
         top.addWidget(self.btn_batch)
         top.addWidget(self.btn_edit)
@@ -188,9 +193,10 @@ class OverviewPage(QWidget):
             self.table.setItem(r, 1, ro(str(m.id)))
             self.table.setItem(r, 2, ro(m.created_at))
             self.table.setItem(r, 3, ro(m.operador))
-            self.table.setItem(r, 4, ro(m.projeto or ""))
-            self.table.setItem(r, 5, ro(m.serie or ""))
-            self.table.setItem(r, 6, ro(m.posto))
+            self.table.setItem(r, 4, ro(m.varal))
+            self.table.setItem(r, 5, ro(m.projeto or ""))
+            self.table.setItem(r, 6, ro(m.serie or ""))
+            self.table.setItem(r, 7, ro(m.posto))
 
     def _selected_ids(self) -> list[int]:
         ids: list[int] = []
@@ -295,6 +301,9 @@ class NewEditPage(QWidget):
         self.projeto = QLineEdit()
         self.serie = QLineEdit()
         self.operador = QLineEdit()
+        self.varal = QLineEdit()
+        self.varal.setPlaceholderText("Varal (obrigatório)")
+
         self._warned_operator_empty = False
 
         # Botões
@@ -483,11 +492,14 @@ class NewEditPage(QWidget):
         header_grid.addWidget(QLabel("Operador:"), 1, 0)
         header_grid.addWidget(self.operador, 1, 1)
 
-        header_grid.addWidget(QLabel("Projeto:"), 2, 0)
-        header_grid.addWidget(self.projeto, 2, 1)
+        header_grid.addWidget(QLabel("Varal"), 2, 0)
+        header_grid.addWidget(self.varal, 2, 1)
 
-        header_grid.addWidget(QLabel("Número de Série:"), 3, 0)
-        header_grid.addWidget(self.serie, 3, 1)
+        header_grid.addWidget(QLabel("Projeto:"), 3, 0)
+        header_grid.addWidget(self.projeto, 3, 1)
+
+        header_grid.addWidget(QLabel("Número de Série:"), 4, 0)
+        header_grid.addWidget(self.serie, 4, 1)
 
         header_box.setLayout(header_grid)
 
@@ -590,7 +602,6 @@ class NewEditPage(QWidget):
             self.arrow_anim.stop()
             self.arrow_anim.start()
 
-    
     def move_arrow_to_measure(self, measure_number):
         for image_name, measures in self.arrow_positions.items():
             if measure_number in measures:
@@ -736,6 +747,7 @@ class NewEditPage(QWidget):
         operador = self.operador.text().strip()
         projeto = self.projeto.text().strip()
         serie = self.serie.text().strip()
+        varal = self.varal.text().strip()
 
         posto_code = self.get_posto_code()
         if not posto_code:
@@ -744,6 +756,14 @@ class NewEditPage(QWidget):
 
         if not RE_OPERADOR.fullmatch(operador):
             QMessageBox.warning(self, "Erro", "Operador inválido. Exemplo: Z123AB4C")
+            return False
+        
+        if not varal:
+            QMessageBox.warning(self, "Erro", "Preencha o campo Varal.")
+            return False
+
+        if not RE_VARAL.fullmatch(varal):
+            QMessageBox.warning(self, "Erro", "Varal inválido. Use apenas números.")
             return False
 
         # Projeto e Série: se você quer obrigatórios, valide sempre.
@@ -760,6 +780,7 @@ class NewEditPage(QWidget):
 
     def save_pending(self) -> None:
         operador = self.operador.text().strip()
+        varal = self.varal.text().strip()
         if not self.validate_fields_for_save():
             return
         
@@ -785,6 +806,7 @@ class NewEditPage(QWidget):
             self.repo.create_pending(
                 posto=posto_code,
                 operador=operador,
+                varal=varal,
                 values=values,
                 projeto=projeto,
                 serie=serie,
@@ -795,6 +817,7 @@ class NewEditPage(QWidget):
                 id=self._edit_id,
                 posto=posto_code,
                 operador=operador,
+                varal=varal,
                 projeto=projeto,
                 serie=serie,
                 values=values,
@@ -809,48 +832,43 @@ class NewEditPage(QWidget):
         self.go_overview()
 
     def save_pending_silent(self) -> None:
+        """Salva sem mostrar mensagens (chamado por finish_measurement)."""
         operador = self.operador.text().strip()
-
-        if not self.validate_fields_for_save():
-            return
-        
-        if not operador:
-            QMessageBox.warning(self, "Erro", "Preencha Operador.")
-            return
-
+        varal    = self.varal.text().strip()
         posto_code = self.get_posto_code()
-        if not posto_code:
-            QMessageBox.warning(self, "Erro", "Selecione o Posto antes de salvar.")
+
+        # Validação silenciosa — sem QMessageBox, apenas aborta se faltar o essencial
+        if not operador or not posto_code:
+            return
+        if not varal or not RE_VARAL.fullmatch(varal):
             return
 
         values = [e.text().strip() for e in self.measure_edits]
-        if len(values) != 46 or not any(values):
-            QMessageBox.warning(self, "Erro", "Não há medições para salvar.")
+        if not any(values):
             return
 
         projeto = self.projeto.text().strip() or None
-        serie = self.serie.text().strip() or None
+        serie   = self.serie.text().strip() or None
 
         if self._edit_id is None:
-            # Criar nova
             self.repo.create_pending(
                 posto=posto_code,
                 operador=operador,
+                varal=varal,
                 values=values,
                 projeto=projeto,
                 serie=serie,
             )
         else:
-            # Atualizar existente
             self.repo.update_measurement(
                 id=self._edit_id,
                 posto=posto_code,
                 operador=operador,
+                varal=varal,
                 projeto=projeto,
                 serie=serie,
                 values=values,
             )
-            QMessageBox.information(self, "OK", "Medição atualizada.")
             self._edit_id = None
 
     def go_back(self) -> None:
@@ -876,6 +894,7 @@ class NewEditPage(QWidget):
 
         # limpa cabeçalho
         self.operador.clear()
+        self.varal.clear()
         self.projeto.clear()
         self.serie.clear()
         self.posto.setCurrentIndex(-1)
@@ -975,6 +994,19 @@ class NewEditPage(QWidget):
             return
         else:
             self._warned_posto_empty = False
+
+        varal = self.varal.text().strip()
+
+        if not varal or not RE_VARAL.fullmatch(varal):
+            if not getattr(self, "_warned_varal_empty", False):
+                msg = ("Preencha o campo Varal antes de iniciar as medições."
+                       if not varal else
+                       "O campo Varal deve conter apenas números.")
+                QMessageBox.warning(self, "Varal inválido", msg)
+                self._warned_varal_empty = True
+            return
+        else:
+            self._warned_varal_empty = False
         
         value = self._extract_value_um(data)
         if value is None:
@@ -1023,7 +1055,6 @@ class NewEditPage(QWidget):
             prox.setFocus()
             self.scroll_measures.ensureWidgetVisible(prox)
             self.scroll_page.ensureWidgetVisible(prox)
-
 
     def get_jat_measures(self) -> list[int]:
         """Retorna a lista de pontos de Jateamento para o dia de hoje."""
@@ -1082,6 +1113,7 @@ class NewEditPage(QWidget):
         # Preenche o cabeçalho
         self.posto.setCurrentText(self.posto_code_to_text(m.posto))
         self.operador.setText(m.operador)
+        self.varal.setText(m.varal)
         if hasattr(self, "projeto"):
             self.projeto.setText(m.projeto or "")
         self.serie.setText(m.serie or "")
@@ -1200,6 +1232,7 @@ class BatchExportPage(QWidget):
                 serie=serie,
                 projeto=proj,
                 operador=m.operador,
+                varal=m.varal,
                 posto=m.posto,
                 created_at=m.created_at,
                 values=m.values,
@@ -1217,8 +1250,8 @@ class HistoryPage(QWidget):
         self.repo = repo
         self.go_overview = go_overview
 
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["ID", "Exportado em", "Cadastro em", "Posto", "Série", "Operador"])
+        self.table = QTableWidget(0, 7)
+        self.table.setHorizontalHeaderLabels(["ID", "Exportado em", "Cadastro em", "Posto", "Varal", "Série", "Operador"])
         self.table.horizontalHeader().setStretchLastSection(True)
 
         self.btn_back = QPushButton("Voltar")
@@ -1249,8 +1282,9 @@ class HistoryPage(QWidget):
             self.table.setItem(r, 1, QTableWidgetItem(m.exported_at or ""))
             self.table.setItem(r, 2, QTableWidgetItem(m.created_at))
             self.table.setItem(r, 3, QTableWidgetItem(m.posto))
-            self.table.setItem(r, 4, QTableWidgetItem(m.serie or ""))
-            self.table.setItem(r, 5, QTableWidgetItem(m.operador))
+            self.table.setItem(r, 4, QTableWidgetItem(m.varal))
+            self.table.setItem(r, 5, QTableWidgetItem(m.serie or ""))
+            self.table.setItem(r, 6, QTableWidgetItem(m.operador))
 
 class AppWindow(QStackedWidget):
     def __init__(self) -> None:
@@ -1307,273 +1341,140 @@ class AppWindow(QStackedWidget):
         self.ble_uuid = uuid
 
 
+
+# ── Temas ──────────────────────────────────────────────────────────────────
+DARK_THEME = """
+    * { font-family: "Segoe UI", "Arial", sans-serif; font-size: 10pt; color: #e2e8f0; }
+    QWidget { background-color: #0f172a; }
+    QStackedWidget { background-color: #0f172a; }
+    QWidget#topbar { background-color: #1e293b; border-bottom: 1px solid #334155; }
+    QGroupBox { background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; margin-top: 18px; padding: 12px 10px 10px 10px; }
+    QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; top: 2px; padding: 0 6px; color: #94a3b8; font-size: 8.5pt; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+    QLineEdit, QComboBox, QTextEdit { background-color: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 5px 10px; min-height: 28px; color: #e2e8f0; selection-background-color: #0ea5e9; selection-color: #ffffff; }
+    QLineEdit:focus, QComboBox:focus, QTextEdit:focus { border: 1px solid #0ea5e9; background-color: #1e293b; }
+    QLineEdit:disabled, QComboBox:disabled { background-color: #1e293b; color: #475569; border-color: #1e293b; }
+    QLineEdit[readOnly="true"] { background-color: #1e293b; color: #94a3b8; }
+    QComboBox::drop-down { border: none; width: 24px; }
+    QComboBox::down-arrow { width: 10px; height: 10px; border-left: 2px solid #64748b; border-bottom: 2px solid #64748b; margin-right: 6px; }
+    QComboBox QAbstractItemView { background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; selection-background-color: #0ea5e9; selection-color: #ffffff; outline: none; }
+    QLabel { background: transparent; color: #cbd5e1; }
+    QPushButton { background-color: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 7px 16px; font-weight: 600; font-size: 9.5pt; color: #cbd5e1; min-height: 32px; }
+    QPushButton:hover { background-color: #334155; border-color: #475569; color: #f1f5f9; }
+    QPushButton:pressed { background-color: #0f172a; border-color: #0ea5e9; }
+    QPushButton:disabled { background-color: #1e293b; color: #334155; border-color: #1e293b; }
+    QPushButton[primary="true"] { background-color: #0ea5e9; border: 1px solid #0ea5e9; color: #ffffff; }
+    QPushButton[primary="true"]:hover { background-color: #38bdf8; border-color: #38bdf8; }
+    QPushButton[primary="true"]:pressed { background-color: #0284c7; }
+    QPushButton[primary="true"]:disabled { background-color: #0c4a6e; border-color: #0c4a6e; color: #475569; }
+    QPushButton[export="true"] { background-color: #059669; border: 1px solid #059669; color: #ffffff; }
+    QPushButton[export="true"]:hover { background-color: #10b981; border-color: #10b981; }
+    QPushButton[export="true"]:pressed { background-color: #047857; }
+    QPushButton[danger="true"] { background-color: #dc2626; border: 1px solid #dc2626; color: #ffffff; }
+    QPushButton[danger="true"]:hover { background-color: #ef4444; border-color: #ef4444; }
+    QPushButton[danger="true"]:pressed { background-color: #b91c1c; }
+    QPushButton[danger="true"]:disabled { background-color: #1e293b; border-color: #1e293b; color: #475569; }
+    QTableWidget { background-color: #1e293b; alternate-background-color: #162032; border: 1px solid #334155; border-radius: 8px; gridline-color: #334155; outline: none; }
+    QTableWidget::item { padding: 8px 10px; border: none; color: #cbd5e1; }
+    QTableWidget::item:selected { background-color: #0c4a6e; color: #f0f9ff; }
+    QTableWidget::item:hover { background-color: #1e3a5f; }
+    QHeaderView::section { background-color: #0f172a; color: #64748b; font-size: 8.5pt; font-weight: 700; letter-spacing: 0.4px; padding: 9px 10px; border: none; border-bottom: 2px solid #334155; border-right: 1px solid #1e293b; text-transform: uppercase; }
+    QHeaderView::section:last { border-right: none; }
+    QTableCornerButton::section { background-color: #0f172a; border: none; }
+    QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }
+    QScrollBar::handle:vertical { background: #334155; border-radius: 4px; min-height: 24px; }
+    QScrollBar::handle:vertical:hover { background: #475569; }
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+    QScrollBar:horizontal { background: transparent; height: 8px; margin: 0; }
+    QScrollBar::handle:horizontal { background: #334155; border-radius: 4px; min-width: 24px; }
+    QScrollBar::handle:horizontal:hover { background: #475569; }
+    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+    QScrollArea { background-color: transparent; border: none; }
+    QCheckBox { spacing: 6px; color: #94a3b8; }
+    QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid #475569; border-radius: 4px; background: #0f172a; }
+    QCheckBox::indicator:checked { background: #0ea5e9; border-color: #0ea5e9; }
+    QCheckBox::indicator:hover { border-color: #0ea5e9; }
+    QMessageBox { background-color: #1e293b; }
+    QMessageBox QLabel { color: #e2e8f0; font-size: 10pt; }
+"""
+
+LIGHT_THEME = """
+    * { font-family: "Segoe UI", "Arial", sans-serif; font-size: 10pt; color: #1e293b; }
+    QWidget { background-color: #f1f5f9; }
+    QStackedWidget { background-color: #f1f5f9; }
+    QWidget#topbar { background-color: #ffffff; border-bottom: 1px solid #e2e8f0; }
+    QGroupBox { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; margin-top: 18px; padding: 12px 10px 10px 10px; }
+    QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; top: 2px; padding: 0 6px; color: #64748b; font-size: 8.5pt; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+    QLineEdit, QComboBox, QTextEdit { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 5px 10px; min-height: 28px; color: #1e293b; selection-background-color: #0ea5e9; selection-color: #ffffff; }
+    QLineEdit:focus, QComboBox:focus, QTextEdit:focus { border: 1px solid #0ea5e9; background-color: #f8fafc; }
+    QLineEdit:disabled, QComboBox:disabled { background-color: #f1f5f9; color: #94a3b8; border-color: #e2e8f0; }
+    QLineEdit[readOnly="true"] { background-color: #f8fafc; color: #64748b; }
+    QComboBox::drop-down { border: none; width: 24px; }
+    QComboBox::down-arrow { width: 10px; height: 10px; border-left: 2px solid #94a3b8; border-bottom: 2px solid #94a3b8; margin-right: 6px; }
+    QComboBox QAbstractItemView { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; selection-background-color: #0ea5e9; selection-color: #ffffff; outline: none; }
+    QLabel { background: transparent; color: #334155; }
+    QPushButton { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px 16px; font-weight: 600; font-size: 9.5pt; color: #334155; min-height: 32px; }
+    QPushButton:hover { background-color: #f1f5f9; border-color: #94a3b8; color: #1e293b; }
+    QPushButton:pressed { background-color: #e2e8f0; border-color: #0ea5e9; }
+    QPushButton:disabled { background-color: #f8fafc; color: #cbd5e1; border-color: #e2e8f0; }
+    QPushButton[primary="true"] { background-color: #0ea5e9; border: 1px solid #0ea5e9; color: #ffffff; }
+    QPushButton[primary="true"]:hover { background-color: #38bdf8; border-color: #38bdf8; }
+    QPushButton[primary="true"]:pressed { background-color: #0284c7; }
+    QPushButton[primary="true"]:disabled { background-color: #bae6fd; border-color: #bae6fd; color: #ffffff; }
+    QPushButton[export="true"] { background-color: #059669; border: 1px solid #059669; color: #ffffff; }
+    QPushButton[export="true"]:hover { background-color: #10b981; border-color: #10b981; }
+    QPushButton[export="true"]:pressed { background-color: #047857; }
+    QPushButton[danger="true"] { background-color: #dc2626; border: 1px solid #dc2626; color: #ffffff; }
+    QPushButton[danger="true"]:hover { background-color: #ef4444; border-color: #ef4444; }
+    QPushButton[danger="true"]:pressed { background-color: #b91c1c; }
+    QPushButton[danger="true"]:disabled { background-color: #fecaca; border-color: #fecaca; color: #ffffff; }
+    QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; gridline-color: #f1f5f9; outline: none; }
+    QTableWidget::item { padding: 8px 10px; border: none; color: #334155; }
+    QTableWidget::item:selected { background-color: #e0f2fe; color: #0c4a6e; }
+    QTableWidget::item:hover { background-color: #f0f9ff; }
+    QHeaderView::section { background-color: #f8fafc; color: #64748b; font-size: 8.5pt; font-weight: 700; letter-spacing: 0.4px; padding: 9px 10px; border: none; border-bottom: 2px solid #e2e8f0; border-right: 1px solid #f1f5f9; text-transform: uppercase; }
+    QHeaderView::section:last { border-right: none; }
+    QTableCornerButton::section { background-color: #f8fafc; border: none; }
+    QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }
+    QScrollBar::handle:vertical { background: #cbd5e1; border-radius: 4px; min-height: 24px; }
+    QScrollBar::handle:vertical:hover { background: #94a3b8; }
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+    QScrollBar:horizontal { background: transparent; height: 8px; margin: 0; }
+    QScrollBar::handle:horizontal { background: #cbd5e1; border-radius: 4px; min-width: 24px; }
+    QScrollBar::handle:horizontal:hover { background: #94a3b8; }
+    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+    QScrollArea { background-color: transparent; border: none; }
+    QCheckBox { spacing: 6px; color: #64748b; }
+    QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid #94a3b8; border-radius: 4px; background: #ffffff; }
+    QCheckBox::indicator:checked { background: #0ea5e9; border-color: #0ea5e9; }
+    QCheckBox::indicator:hover { border-color: #0ea5e9; }
+    QMessageBox { background-color: #ffffff; }
+    QMessageBox QLabel { color: #1e293b; font-size: 10pt; }
+"""
+
 def main() -> None:
     app = QApplication(sys.argv)
     
-    app.setStyleSheet("""
-    /* ── BASE ─────────────────────────────────────────────────────── */
-    * {
-        font-family: "Segoe UI", "Arial", sans-serif;
-        font-size: 10pt;
-        color: #e2e8f0;
-    }
+    app.setStyleSheet(DARK_THEME)
+    app._current_theme = "dark"
 
-    QWidget {
-        background-color: #0f172a;
-    }
+    def toggle_theme():
+        if app._current_theme == "dark":
+            app.setStyleSheet(LIGHT_THEME)
+            app._current_theme = "light"
+            w.overview.btn_theme.setText("🌙 Tema Escuro")
+        else:
+            app.setStyleSheet(DARK_THEME)
+            app._current_theme = "dark"
+            w.overview.btn_theme.setText("☀️ Tema Claro")
 
-    QStackedWidget {
-        background-color: #0f172a;
-    }
+    # conecta após criar a janela (veja abaixo)
+    app._toggle_theme = toggle_theme
 
-    /* ── TOPBAR / TOOLBAR AREA ─────────────────────────────────────── */
-    QWidget#topbar {
-        background-color: #1e293b;
-        border-bottom: 1px solid #334155;
-    }
-
-    /* ── GROUP BOX ─────────────────────────────────────────────────── */
-    QGroupBox {
-        background-color: #1e293b;
-        border: 1px solid #334155;
-        border-radius: 8px;
-        margin-top: 18px;
-        padding: 12px 10px 10px 10px;
-    }
-    QGroupBox::title {
-        subcontrol-origin: margin;
-        subcontrol-position: top left;
-        left: 12px;
-        top: 2px;
-        padding: 0 6px;
-        color: #94a3b8;
-        font-size: 8.5pt;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-    }
-
-    /* ── INPUTS ────────────────────────────────────────────────────── */
-    QLineEdit, QComboBox, QTextEdit {
-        background-color: #0f172a;
-        border: 1px solid #334155;
-        border-radius: 6px;
-        padding: 5px 10px;
-        min-height: 28px;
-        color: #e2e8f0;
-        selection-background-color: #0ea5e9;
-        selection-color: #ffffff;
-    }
-    QLineEdit:focus, QComboBox:focus, QTextEdit:focus {
-        border: 1px solid #0ea5e9;
-        background-color: #1e293b;
-    }
-    QLineEdit:disabled, QComboBox:disabled {
-        background-color: #1e293b;
-        color: #475569;
-        border-color: #1e293b;
-    }
-    QLineEdit[readOnly="true"] {
-        background-color: #1e293b;
-        color: #94a3b8;
-    }
-
-    QComboBox::drop-down {
-        border: none;
-        width: 24px;
-    }
-    QComboBox::down-arrow {
-        width: 10px;
-        height: 10px;
-        border-left:  2px solid #64748b;
-        border-bottom: 2px solid #64748b;
-        margin-right: 6px;
-        /* simple CSS chevron via rotation trick */
-    }
-    QComboBox QAbstractItemView {
-        background-color: #1e293b;
-        border: 1px solid #334155;
-        border-radius: 6px;
-        selection-background-color: #0ea5e9;
-        selection-color: #ffffff;
-        outline: none;
-    }
-
-    /* ── LABELS ────────────────────────────────────────────────────── */
-    QLabel {
-        background: transparent;
-        color: #cbd5e1;
-    }
-
-    /* ── BUTTONS — default ─────────────────────────────────────────── */
-    QPushButton {
-        background-color: #1e293b;
-        border: 1px solid #334155;
-        border-radius: 6px;
-        padding: 7px 16px;
-        font-weight: 600;
-        font-size: 9.5pt;
-        color: #cbd5e1;
-        min-height: 32px;
-    }
-    QPushButton:hover {
-        background-color: #334155;
-        border-color: #475569;
-        color: #f1f5f9;
-    }
-    QPushButton:pressed {
-        background-color: #0f172a;
-        border-color: #0ea5e9;
-    }
-    QPushButton:disabled {
-        background-color: #1e293b;
-        color: #334155;
-        border-color: #1e293b;
-    }
-
-    /* ── BUTTON — primary (Cadastrar / Conectar) ───────────────────── */
-    QPushButton[primary="true"] {
-        background-color: #0ea5e9;
-        border: 1px solid #0ea5e9;
-        color: #ffffff;
-    }
-    QPushButton[primary="true"]:hover  { background-color: #38bdf8; border-color: #38bdf8; }
-    QPushButton[primary="true"]:pressed { background-color: #0284c7; }
-    QPushButton[primary="true"]:disabled {
-        background-color: #0c4a6e;
-        border-color: #0c4a6e;
-        color: #475569;
-    }
-
-    /* ── BUTTON — export / green ───────────────────────────────────── */
-    QPushButton[export="true"] {
-        background-color: #059669;
-        border: 1px solid #059669;
-        color: #ffffff;
-    }
-    QPushButton[export="true"]:hover  { background-color: #10b981; border-color: #10b981; }
-    QPushButton[export="true"]:pressed { background-color: #047857; }
-
-    /* ── BUTTON — danger (Excluir / Parar) ────────────────────────── */
-    QPushButton[danger="true"] {
-        background-color: #dc2626;
-        border: 1px solid #dc2626;
-        color: #ffffff;
-    }
-    QPushButton[danger="true"]:hover  { background-color: #ef4444; border-color: #ef4444; }
-    QPushButton[danger="true"]:pressed { background-color: #b91c1c; }
-    QPushButton[danger="true"]:disabled {
-        background-color: #1e293b;
-        border-color: #1e293b;
-        color: #475569;
-    }
-
-    /* ── TABLE ─────────────────────────────────────────────────────── */
-    QTableWidget {
-        background-color: #1e293b;
-        alternate-background-color: #162032;
-        border: 1px solid #334155;
-        border-radius: 8px;
-        gridline-color: #334155;
-        outline: none;
-    }
-    QTableWidget::item {
-        padding: 8px 10px;
-        border: none;
-        color: #cbd5e1;
-    }
-    QTableWidget::item:selected {
-        background-color: #0c4a6e;
-        color: #f0f9ff;
-    }
-    QTableWidget::item:hover {
-        background-color: #1e3a5f;
-    }
-    QHeaderView::section {
-        background-color: #0f172a;
-        color: #64748b;
-        font-size: 8.5pt;
-        font-weight: 700;
-        letter-spacing: 0.4px;
-        padding: 9px 10px;
-        border: none;
-        border-bottom: 2px solid #334155;
-        border-right: 1px solid #1e293b;
-        text-transform: uppercase;
-    }
-    QHeaderView::section:last { border-right: none; }
-    QTableCornerButton::section {
-        background-color: #0f172a;
-        border: none;
-    }
-
-    /* ── SCROLLBAR ─────────────────────────────────────────────────── */
-    QScrollBar:vertical {
-        background: transparent;
-        width: 8px;
-        margin: 0;
-    }
-    QScrollBar::handle:vertical {
-        background: #334155;
-        border-radius: 4px;
-        min-height: 24px;
-    }
-    QScrollBar::handle:vertical:hover  { background: #475569; }
-    QScrollBar::add-line:vertical,
-    QScrollBar::sub-line:vertical      { height: 0; }
-
-    QScrollBar:horizontal {
-        background: transparent;
-        height: 8px;
-        margin: 0;
-    }
-    QScrollBar::handle:horizontal {
-        background: #334155;
-        border-radius: 4px;
-        min-width: 24px;
-    }
-    QScrollBar::handle:horizontal:hover { background: #475569; }
-    QScrollBar::add-line:horizontal,
-    QScrollBar::sub-line:horizontal     { width: 0; }
-
-    QScrollArea {
-        background-color: transparent;
-        border: none;
-    }
-
-    /* ── CHECKBOX ──────────────────────────────────────────────────── */
-    QCheckBox {
-        spacing: 6px;
-        color: #94a3b8;
-    }
-    QCheckBox::indicator {
-        width: 16px;
-        height: 16px;
-        border: 1px solid #475569;
-        border-radius: 4px;
-        background: #0f172a;
-    }
-    QCheckBox::indicator:checked {
-        background: #0ea5e9;
-        border-color: #0ea5e9;
-    }
-    QCheckBox::indicator:hover {
-        border-color: #0ea5e9;
-    }
-
-    /* ── MESSAGE BOX ───────────────────────────────────────────────── */
-    QMessageBox {
-        background-color: #1e293b;
-    }
-    QMessageBox QLabel {
-        color: #e2e8f0;
-        font-size: 10pt;
-    }
-    """)
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
 
     w = AppWindow()
+    w.overview.btn_theme.clicked.connect(app._toggle_theme)
     w.showMaximized()
 
     with loop:
@@ -1582,4 +1483,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    

@@ -11,6 +11,7 @@ class Measurement:
     created_at: str
     posto: str  # FUNDO / ACAB / JAT
     operador: str
+    varal: str
     projeto: str | None
     serie: str | None
     values: list[str]  # len 46
@@ -29,6 +30,12 @@ class Repo:
         return con
 
     def _init_db(self) -> None:
+        
+        with self._connect() as con:
+            cols = [r["name"] for r in con.execute("PRAGMA table_info(measurements)")]
+            if "varal" not in cols:
+                con.execute("ALTER TABLE measurements ADD COLUMN varal TEXT NULL")
+
         with self._connect() as con:
             cols = ",".join([f"m{i:02d} TEXT" for i in range(1, 47)])
             con.execute(
@@ -51,6 +58,7 @@ class Repo:
         self,
         posto: str,
         operador: str,
+        varal: str,
         values: list[str],
         projeto: str | None = None,
         serie: str | None = None,
@@ -65,10 +73,18 @@ class Repo:
             cur = con.execute(
                 f"""
                 INSERT INTO measurements
-                (created_at, posto, operador, projeto, serie, {cols}, status, exported_at)
-                VALUES (?, ?, ?, ?, ?, {placeholders}, 'PENDING', NULL)
+                (created_at, posto, operador, varal, projeto, serie, {cols}, status, exported_at)
+                VALUES (?, ?, ?, ?, ?, ?, {placeholders}, 'PENDING', NULL)
                 """,
-                [now, posto, operador, projeto, serie, *values],
+                [
+                    now,
+                    posto,
+                    operador,
+                    varal,  
+                    projeto,
+                    serie,
+                    *values,
+                ],
             )
             return int(cur.lastrowid)
 
@@ -130,6 +146,7 @@ class Repo:
             created_at=r["created_at"],
             posto=r["posto"],
             operador=r["operador"],
+            varal=r["varal"],
             projeto=r["projeto"],
             serie=r["serie"],
             values=values,
@@ -152,7 +169,7 @@ class Repo:
             ).fetchall()
         return [self._row_to_measurement(r) for r in rows]
     
-    def update_measurement(self, id, posto, operador, projeto, serie, values):
+    def update_measurement(self, id, posto, operador, varal, projeto, serie, values):
         assert len(values) == 46
 
         cols = [f"m{i:02d}" for i in range(1, 47)]
@@ -162,10 +179,10 @@ class Repo:
             con.execute(
                 f"""
                 UPDATE measurements
-                SET posto=?, operador=?, projeto=?, serie=?, {set_clause}
+                SET posto=?, operador=?, varal=?, projeto=?, serie=?, {set_clause}
                 WHERE id=?
                 """,
-                [posto, operador, projeto, serie, *values, id],
+                [posto, operador, varal, projeto, serie, *values, id],
             )
 
     def get_config(self, key: str, default: str = "") -> str:
