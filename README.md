@@ -85,6 +85,7 @@ O executável será gerado em `dist/MedicaoCamadas.exe`. Arquivo único, sem dep
 | Campo | Formato | Exemplo |
 |---|---|---|
 | Operador | `Z` + 3 dígitos + 4 alfanuméricos maiúsculos | `Z0052DFZ` |
+| Varal | Apenas números | `35` |
 | Projeto | 3 letras maiúsculas + 4 números | `SEF0500` |
 | Número de Série | 10 dígitos | `1015150001` |
 
