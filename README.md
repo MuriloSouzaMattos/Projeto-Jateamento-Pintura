@@ -22,7 +22,7 @@ A interface guia o operador ponto a ponto com uma seta animada sobre a imagem de
 - **Exportação para Excel** com dados completos da medição
 - **Histórico** de medições exportadas
 - **Configuração BLE persistente** — MAC e UUID salvos entre sessões
-- **Validação de campos** — Operador, Projeto e Número de Série com formato definido
+- **Validação de campos** — Operador, Varal, Projeto e Número de Série com formato definido
 
 ---
 
