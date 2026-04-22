@@ -30,12 +30,7 @@ class Repo:
         return con
 
     def _init_db(self) -> None:
-        
-        with self._connect() as con:
-            cols = [r["name"] for r in con.execute("PRAGMA table_info(measurements)")]
-            if "varal" not in cols:
-                con.execute("ALTER TABLE measurements ADD COLUMN varal TEXT NULL")
-
+        # 1. Cria a tabela se não existir (inclui varal desde o início)
         with self._connect() as con:
             cols = ",".join([f"m{i:02d} TEXT" for i in range(1, 47)])
             con.execute(
@@ -45,6 +40,7 @@ class Repo:
                     created_at TEXT NOT NULL,
                     posto TEXT NOT NULL,
                     operador TEXT NOT NULL,
+                    varal TEXT NULL,
                     projeto TEXT NULL,
                     serie TEXT NULL,
                     {cols},
@@ -53,6 +49,12 @@ class Repo:
                 )
                 """
             )
+
+        # 2. Migração: adiciona varal em bancos antigos que ainda não têm a coluna
+        with self._connect() as con:
+            existing = [r["name"] for r in con.execute("PRAGMA table_info(measurements)")]
+            if "varal" not in existing:
+                con.execute("ALTER TABLE measurements ADD COLUMN varal TEXT NULL")
 
     def create_pending(
         self,
