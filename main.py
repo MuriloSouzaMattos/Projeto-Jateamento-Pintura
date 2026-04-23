@@ -656,7 +656,10 @@ class NewEditPage(QWidget):
 
         # destaca o campo selecionado
         for j, e in enumerate(self.measure_edits):
-            e.setStyleSheet("" if j != index else "border: 2px solid #0ea5e9; background-color: #1e3a5f;")
+            from PySide6.QtWidgets import QApplication
+            is_dark = getattr(QApplication.instance(), "_current_theme", "dark") == "dark"
+            highlight = "border: 2px solid #0ea5e9; background-color: #1e3a5f;" if is_dark else "border: 2px solid #0ea5e9; background-color: #e0f2fe;"
+            e.setStyleSheet("" if j != index else highlight)
 
         self.update_image_for_measure(index + 1)
         self.move_arrow_to_measure(index + 1)
