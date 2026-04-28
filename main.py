@@ -651,10 +651,27 @@ class NewEditPage(QWidget):
     def set_override_index(self, index: int) -> None:
         self.override_index = index
 
-        # destaca o campo selecionado
-        for j, e in enumerate(self.measure_edits):
-            e.setStyleSheet("" if j != index else "border: 2px solid #0ea5e9; background-color: #1e3a5f;")
+        # Detecta o tema atual com segurança
+        app = QApplication.instance()
+        is_dark = getattr(app, "_current_theme", "dark") == "dark"
 
+        # Define as cores baseadas no tema
+        if is_dark:
+            # Estilo para o Modo Escuro
+            highlight_style = "border: 2px solid #0ea5e9; background-color: #1e3a5f; color: #e2e8f0;"
+        else:
+            # Estilo para o Modo Claro (conforme seu pedido)
+            highlight_style = "border: 2px solid #0ea5e9; background-color: #e0f2fe; color: #1e293b;"
+
+        # Aplica o destaque apenas ao campo selecionado e reseta os outros
+        for j, edit in enumerate(self.measure_edits):
+            if j == index:
+                edit.setStyleSheet(highlight_style)
+            else:
+                # Volta para o estilo padrão (vazio para assumir o QSS do tema)
+                edit.setStyleSheet("")
+
+        # Atualiza a interface visual (imagem e seta)
         self.update_image_for_measure(index + 1)
         self.move_arrow_to_measure(index + 1)
 
