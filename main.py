@@ -109,6 +109,7 @@ class OverviewPage(QWidget):
             ("Qualidade",  "24:5D:FC:00:65:82"),
             ("Pintura",    "24:5D:FC:00:65:8D"),
             ("CQ",         "24:5D:FC:00:B3:2E"),
+            ("Jateamento", "24:5D:FC:00:6D:79"),
         ]
         self._ble_devices = BLE_DEVICES
         self.BLE_UUID_FIXED = "06d1e5e7-79ad-4a71-8faa-373789f7d93c"
