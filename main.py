@@ -105,19 +105,24 @@ class OverviewPage(QWidget):
         self.btn_history = QPushButton("Histórico")
         self.btn_refresh = QPushButton("Atualizar")
 
-        self.ble_mac = QLineEdit("24:5D:FC:00:B3:2E")
-        self.ble_uuid = QLineEdit("06d1e5e7-79ad-4a71-8faa-373789f7d93c")
+        BLE_DEVICES = [
+            ("Qualidade",  "24:5D:FC:00:65:82"),
+            ("Pintura",    "24:5D:FC:00:65:8D"),
+            ("CQ",         "24:5D:FC:00:B3:2E"),
+        ]
+        self._ble_devices = BLE_DEVICES
+        self.BLE_UUID_FIXED = "06d1e5e7-79ad-4a71-8faa-373789f7d93c"
 
-        self.btn_save_ble = QPushButton("Salvar BLE")
-        self.btn_save_ble.clicked.connect(self._save_ble)
+        self.ble_combo = QComboBox()
+        for name, mac in BLE_DEVICES:
+            self.ble_combo.addItem(f"{name}  —  {mac}", userData=mac)
+        self.ble_combo.setCurrentIndex(2)  # padrão: CQ
+        self.ble_combo.currentIndexChanged.connect(self._on_ble_combo_changed)
 
-        ble_box = QGroupBox("Configuração BLE")
+        ble_box = QGroupBox("Dispositivo BLE")
         g = QGridLayout(ble_box)
-        g.addWidget(QLabel("MAC:"), 0, 0)
-        g.addWidget(self.ble_mac, 0, 1)
-        g.addWidget(QLabel("UUID:"), 1, 0)
-        g.addWidget(self.ble_uuid, 1, 1)
-        g.addWidget(self.btn_save_ble, 0, 2, 2, 1)
+        g.addWidget(QLabel("Medidor:"), 0, 0)
+        g.addWidget(self.ble_combo, 0, 1)
 
         # Estilos/tamanhos
         self.btn_new.setProperty("primary", True)
@@ -246,19 +251,10 @@ class OverviewPage(QWidget):
         self.repo.delete_measurement(id_)
         self.refresh()
 
-    def _save_ble(self) -> None:
-        mac = self.ble_mac.text().strip()
-        uuid = self.ble_uuid.text().strip()
-
-        if not mac or not uuid:
-            QMessageBox.warning(self, "Erro", "Preencha MAC e UUID.")
-            return
-
-        # chama o callback que o AppWindow passou
-        if self._set_ble_config_cb is not None:
-            self._set_ble_config_cb(mac, uuid)
-
-        QMessageBox.information(self, "OK", "Configuração BLE salva.")
+    def _on_ble_combo_changed(self, index: int) -> None:
+        mac = self.ble_combo.itemData(index)
+        if mac and self._set_ble_config_cb is not None:
+            self._set_ble_config_cb(mac, self.BLE_UUID_FIXED)
     
     def _on_edit(self) -> None:
         ids = self._selected_ids()
@@ -656,10 +652,7 @@ class NewEditPage(QWidget):
 
         # destaca o campo selecionado
         for j, e in enumerate(self.measure_edits):
-            from PySide6.QtWidgets import QApplication
-            is_dark = getattr(QApplication.instance(), "_current_theme", "dark") == "dark"
-            highlight = "border: 2px solid #0ea5e9; background-color: #1e3a5f;" if is_dark else "border: 2px solid #0ea5e9; background-color: #e0f2fe;"
-            e.setStyleSheet("" if j != index else highlight)
+            e.setStyleSheet("" if j != index else "border: 2px solid #0ea5e9; background-color: #1e3a5f;")
 
         self.update_image_for_measure(index + 1)
         self.move_arrow_to_measure(index + 1)
@@ -1293,8 +1286,8 @@ class AppWindow(QStackedWidget):
     def __init__(self) -> None:
         super().__init__()
         self.repo = Repo("medicoes.db")
-        self.ble_mac = "24:5D:FC:00:B3:2E"
         self.ble_uuid = "06d1e5e7-79ad-4a71-8faa-373789f7d93c"
+        self.ble_mac  = self.repo.get_config("ble_mac", "24:5D:FC:00:B3:2E")
 
         self.overview = OverviewPage(
             repo=self.repo,
@@ -1303,6 +1296,14 @@ class AppWindow(QStackedWidget):
             go_history=self.show_history,
             set_ble_config=self.set_ble_config
             )
+        # Seleciona no combo o MAC que estava salvo
+        combo = self.overview.ble_combo
+        for i in range(combo.count()):
+            if combo.itemData(i) == self.ble_mac:
+                combo.blockSignals(True)
+                combo.setCurrentIndex(i)
+                combo.blockSignals(False)
+                break
         
         self.newedit = NewEditPage(repo=self.repo, go_overview=self.show_overview)
         self.batch = BatchExportPage(repo=self.repo, go_overview=self.show_overview, go_history=self.show_history)
@@ -1342,6 +1343,7 @@ class AppWindow(QStackedWidget):
     def set_ble_config(self, mac: str, uuid: str) -> None:
         self.ble_mac = mac
         self.ble_uuid = uuid
+        self.repo.set_config("ble_mac", mac)
 
 
 
@@ -1457,8 +1459,8 @@ LIGHT_THEME = """
 def main() -> None:
     app = QApplication(sys.argv)
     
-    app.setStyleSheet(DARK_THEME)
-    app._current_theme = "dark"
+    app.setStyleSheet(LIGHT_THEME)
+    app._current_theme = "light"
 
     def toggle_theme():
         if app._current_theme == "dark":
@@ -1470,13 +1472,13 @@ def main() -> None:
             app._current_theme = "dark"
             w.overview.btn_theme.setText("☀️ Tema Claro")
 
-    # conecta após criar a janela (veja abaixo)
     app._toggle_theme = toggle_theme
 
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
 
     w = AppWindow()
+    w.overview.btn_theme.setText("🌙 Tema Escuro")
     w.overview.btn_theme.clicked.connect(app._toggle_theme)
     w.showMaximized()
 
