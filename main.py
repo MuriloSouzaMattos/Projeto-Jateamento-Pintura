@@ -298,8 +298,9 @@ class NewEditPage(QWidget):
         self.projeto = QLineEdit()
         self.serie = QLineEdit()
         self.operador = QLineEdit()
+        self.operador.setPlaceholderText("Obrigatório")
         self.varal = QLineEdit()
-        self.varal.setPlaceholderText("Varal (obrigatório)")
+        self.varal.setPlaceholderText("Obrigatório (exceto Jateamento)")
 
         self._warned_operator_empty = False
 
@@ -772,13 +773,14 @@ class NewEditPage(QWidget):
             QMessageBox.warning(self, "Erro", "Operador inválido. Exemplo: Z123AB4C")
             return False
         
-        if not varal:
-            QMessageBox.warning(self, "Erro", "Preencha o campo Varal.")
-            return False
-
-        if not RE_VARAL.fullmatch(varal):
-            QMessageBox.warning(self, "Erro", "Varal inválido. Use apenas números.")
-            return False
+        is_jat = (posto_code == "JAT")
+        if not is_jat:
+            if not varal:
+                QMessageBox.warning(self, "Erro", "Preencha o campo Varal.")
+                return False
+            if not RE_VARAL.fullmatch(varal):
+                QMessageBox.warning(self, "Erro", "Varal inválido. Use apenas números.")
+                return False
 
         # Projeto e Série: se você quer obrigatórios, valide sempre.
         # Se forem opcionais, valide só quando preenchidos:
@@ -854,8 +856,9 @@ class NewEditPage(QWidget):
         # Validação silenciosa — sem QMessageBox, apenas aborta se faltar o essencial
         if not operador or not posto_code:
             return
-        if not varal or not RE_VARAL.fullmatch(varal):
-            return
+        if posto_code != "JAT":
+            if not varal or not RE_VARAL.fullmatch(varal):
+                return
 
         values = [e.text().strip() for e in self.measure_edits]
         if not any(values):
@@ -1010,17 +1013,19 @@ class NewEditPage(QWidget):
             self._warned_posto_empty = False
 
         varal = self.varal.text().strip()
+        posto_code_now = self.get_posto_code()
 
-        if not varal or not RE_VARAL.fullmatch(varal):
-            if not getattr(self, "_warned_varal_empty", False):
-                msg = ("Preencha o campo Varal antes de iniciar as medições."
-                       if not varal else
-                       "O campo Varal deve conter apenas números.")
-                QMessageBox.warning(self, "Varal inválido", msg)
-                self._warned_varal_empty = True
-            return
-        else:
-            self._warned_varal_empty = False
+        if posto_code_now != "JAT":
+            if not varal or not RE_VARAL.fullmatch(varal):
+                if not getattr(self, "_warned_varal_empty", False):
+                    msg = ("Preencha o campo Varal antes de iniciar as medições."
+                           if not varal else
+                           "O campo Varal deve conter apenas números.")
+                    QMessageBox.warning(self, "Varal inválido", msg)
+                    self._warned_varal_empty = True
+                return
+            else:
+                self._warned_varal_empty = False
         
         value = self._extract_value_um(data)
         if value is None:
